@@ -1,0 +1,9 @@
+C instruction
+???=???;???
+
+Must have = or ;
+
+A instruction
+@???...
+
+After @ must have character or number

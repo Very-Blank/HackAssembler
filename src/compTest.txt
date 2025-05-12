@@ -1,0 +1,62 @@
+// VALID CASES
+// -----------
+// dest=comp
+M=D
+D=0
+AM=!M
+MD=M-1
+AD=D&A
+AMD=D|M
+A=1
+D=-1
+ADM=M+1
+
+// comp;jump
+0;JMP
+D+M;JGE
+M-1;JNE
+D|A;JEQ
+D;JGT
+1;JLE
+-M;JLT
+A-D;JMP
+D&A;JLT
+
+// dest=comp;jump
+D=M;JNE
+AM=D+1;JGE
+AD=0;JMP
+MD=D-1;JGT
+M=1;JLT
+A=D&A;JEQ
+AMD=!M;JLE
+D=D|M;JMP
+ADM=M-1;JGE
+
+// INVALID CASES
+// -------------
+// Only comp (no dest/jump)
+D+M      // Error: missing dest and jump
+!M       // Error: missing dest and jump
+A-D      // Error: missing dest and jump
+
+// Invalid dest (wrong order/characters)
+DA=M     // Error: dest "DA" invalid (use "AD")
+DM=A     // Error: dest "DM" invalid
+AX=D+1   // Error: dest "AX" invalid
+
+// Invalid comp (unsupported operations)
+D<<      // Error: bit shifts not allowed
+A*D      // Error: invalid operator "*
+M=       // Error: incomplete comp
+
+// Invalid jump (typos)
+D;JMPP   // Error: "JMPP" invalid
+0;JG     // Error: "JG" invalid
+M-1;JMP2 // Error: "JMP2" invalid
+
+// Syntax errors
+D==M     // Error: double "="
+;JMP     // Error: missing comp
+D=;JMP   // Error: missing comp
+=0;JMP   // Error: missing dest
