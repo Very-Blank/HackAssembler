@@ -1,5 +1,6 @@
 // Adds 1 + ... + 100
-@i
+@i // This syntax makes me want to puke, it's rather dumb.
+// Values and varibales shouldn't be declared with the same symbol!
 M=1 // i=1
 @sum
 M=0 // sum=0
