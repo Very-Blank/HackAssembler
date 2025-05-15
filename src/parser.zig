@@ -7,6 +7,7 @@ const State = enum {
     instruction,
     aInstruction,
     cInstruction,
+    label,
 };
 
 pub const Parser = struct {
@@ -45,21 +46,19 @@ pub const Parser = struct {
         // var cInst: [3]u8 = .{ 0, 0, 0 };
 
         var i: u64 = 0;
-        var j: u64 = 0;
 
         state: switch (State.Instruction) {
             .ignore => {
-                if (buffer[j] == '\n') {
-                    j += 1;
-                    if (buffer.len != j) {
-                        i = j;
+                if (buffer[i] == '\n') {
+                    i += 1;
+                    if (i < buffer.len) {
                         continue :state .instruction;
                     } else {
                         break :state;
                     }
                 } else {
-                    j += 1;
-                    if (buffer.len != j) {
+                    i += 1;
+                    if (i < buffer.len) {
                         continue :state .ignore;
                     } else {
                         break :state;
@@ -67,48 +66,52 @@ pub const Parser = struct {
                 }
             },
             .instruction => {
-                switch (buffer[j]) {
+                switch (buffer[i]) {
                     '/' => {
-                        j += 1;
-                        if (j + 1 < buffer.len and buffer[j + 1] == '/') {
-                            i = j;
+                        i += 1;
+                        if (i + 1 < buffer.len and buffer[i + 1] == '/') {
                             continue :state .ignore;
                         } else {
                             return error.@"Unexpected / found";
                         }
                     },
-                    '@' => {},
-                    // zig fmt: off
-                    std.ascii.whitespace[0],
-                    std.ascii.whitespace[1],
-                    std.ascii.whitespace[3],
-                    std.ascii.whitespace[4],
-                    std.ascii.whitespace[5] => {
-                        // zig fmt: on
-                        j += 1;
-                        if (buffer.len != j) {
-                            i = j;
+                    ' ', '\t', '\r', std.ascii.control_code.vt, std.ascii.control_code.ff => {
+                        i += 1;
+                        if (i < buffer.len) {
                             continue :state .instruction;
                         } else {
                             break :state;
                         }
                     },
                     '\n' => {
-                        j += 1;
+                        i += 1;
                         lineCount += 1;
 
-                        if (buffer.len != j) {
-                            i = j;
+                        if (i < buffer.len) {
                             continue :state .instruction;
                         } else {
                             break :state;
                         }
                     },
+                    '@' => {
+                        i += 1;
+                        if (i < buffer.len) {
+                            continue :state .aInstruction;
+                        } else {
+                            break :state;
+                        }
+                    },
+                    'A'...'Z', 'a'...'z' => {
+                        //
+                    },
                     else => {
-                        if (std.ascii.is) {}
+                        return error.UnexpectedCharacter;
                     },
                 }
             },
+            .aInstruction => {},
+            .cInstruction => {},
+            .label => {},
         }
     }
 };
