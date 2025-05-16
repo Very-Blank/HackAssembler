@@ -37,8 +37,7 @@ pub const Parser = struct {
         }
     }
 
-    pub fn firstPass(self: *Parser, buffer: []u8) !FirstPass {
-        _ = self;
+    pub fn firstPass(buffer: []const u8) !void {
         // var instructions: std.ArrayList(instruction.Instruction) = std.ArrayList(instruction.Instruction).init(self.allocator);
         // var instCount: u64 = 0;
         var lineCount: u64 = 0;
@@ -47,9 +46,10 @@ pub const Parser = struct {
 
         var i: u64 = 0;
 
-        state: switch (State.Instruction) {
+        state: switch (State.instruction) {
             .ignore => {
                 if (buffer[i] == '\n') {
+                    lineCount += 1;
                     i += 1;
                     if (i < buffer.len) {
                         continue :state .instruction;
@@ -68,9 +68,15 @@ pub const Parser = struct {
             .instruction => {
                 switch (buffer[i]) {
                     '/' => {
-                        i += 1;
                         if (i + 1 < buffer.len and buffer[i + 1] == '/') {
-                            continue :state .ignore;
+                            std.debug.print("Commment\n", .{});
+
+                            i += 2;
+                            if (i < buffer.len) {
+                                continue :state .ignore;
+                            } else {
+                                break :state;
+                            }
                         } else {
                             return error.@"Unexpected / found";
                         }
@@ -98,20 +104,74 @@ pub const Parser = struct {
                         if (i < buffer.len) {
                             continue :state .aInstruction;
                         } else {
-                            break :state;
+                            return error.ExpectedAInstruction;
                         }
                     },
-                    'A'...'Z', 'a'...'z' => {
-                        //
+                    '0'...'9', 'A'...'Z', 'a'...'z' => {
+                        continue :state .cInstruction;
+                    },
+                    '(' => {
+                        i += 1;
+                        if (i < buffer.len) {
+                            continue :state .aInstruction;
+                        } else {
+                            return error.ExpectedLabel;
+                        }
                     },
                     else => {
+                        std.debug.print("Line: {any}\n", .{lineCount});
                         return error.UnexpectedCharacter;
                     },
                 }
             },
-            .aInstruction => {},
-            .cInstruction => {},
-            .label => {},
+            .aInstruction => {
+                for (i..buffer.len) |j| {
+                    if (buffer[j] == '\n') {
+                        lineCount += 1;
+
+                        std.debug.print("A Instruction\n", .{});
+                        if (j + 1 < buffer.len) {
+                            i = j + 1;
+                            continue :state .instruction;
+                        } else {
+                            i = j;
+                            break :state;
+                        }
+                    }
+                }
+            },
+            .cInstruction => {
+                for (i..buffer.len) |j| {
+                    if (buffer[j] == '\n') {
+                        lineCount += 1;
+
+                        std.debug.print("C Instruction\n", .{});
+                        if (j + 1 < buffer.len) {
+                            i = j + 1;
+                            continue :state .instruction;
+                        } else {
+                            i = j;
+                            break :state;
+                        }
+                    }
+                }
+            },
+            .label => {
+                for (i..buffer.len) |j| {
+                    if (buffer[j] == '\n') {
+                        lineCount += 1;
+
+                        std.debug.print("Label\n", .{});
+                        if (j + 1 < buffer.len) {
+                            i = j + 1;
+                            continue :state .instruction;
+                        } else {
+                            i = j;
+                            break :state;
+                        }
+                    }
+                }
+            },
         }
     }
 };
