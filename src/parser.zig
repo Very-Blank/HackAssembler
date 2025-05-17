@@ -3,8 +3,8 @@ const instruction = @import("instruction.zig");
 const FirstPass = @import("firstPass.zig");
 
 const State = enum {
-    ignore,
-    instruction,
+    search,
+    comment,
     aInstruction,
     cInstruction,
     label,
@@ -40,51 +40,43 @@ pub const Parser = struct {
     pub fn firstPass(buffer: []const u8) !void {
         // var instructions: std.ArrayList(instruction.Instruction) = std.ArrayList(instruction.Instruction).init(self.allocator);
         // var instCount: u64 = 0;
-        var lineCount: u64 = 0;
+        var lineCount: u64 = 1;
         //
         // var cInst: [3]u8 = .{ 0, 0, 0 };
 
         var i: u64 = 0;
 
-        state: switch (State.instruction) {
-            .ignore => {
-                if (buffer[i] == '\n') {
-                    lineCount += 1;
-                    i += 1;
-                    if (i < buffer.len) {
-                        continue :state .instruction;
-                    } else {
-                        break :state;
-                    }
-                } else {
-                    i += 1;
-                    if (i < buffer.len) {
-                        continue :state .ignore;
-                    } else {
-                        break :state;
-                    }
-                }
-            },
-            .instruction => {
-                switch (buffer[i]) {
-                    '/' => {
-                        if (i + 1 < buffer.len and buffer[i + 1] == '/') {
-                            std.debug.print("Commment\n", .{});
+        state: switch (State.search) {
+            .comment => {
+                i += 1;
+                if (i < buffer.len and buffer[i] == '/') {
+                    std.debug.print("Comment, line: {any}\n", .{lineCount});
+                    for (i..buffer.len) |j| {
+                        if (buffer[j] == '\n') {
+                            lineCount += 1;
 
-                            i += 2;
-                            if (i < buffer.len) {
-                                continue :state .ignore;
+                            if (j + 1 < buffer.len) {
+                                i = j + 1;
+                                continue :state .search;
                             } else {
+                                i = j;
                                 break :state;
                             }
-                        } else {
-                            return error.@"Unexpected / found";
                         }
+                    }
+                } else {
+                    return error.@"Unexpected / found";
+                }
+            },
+            .search => {
+                switch (buffer[i]) {
+                    '/' => {
+                        continue :state .comment;
                     },
                     ' ', '\t', '\r', std.ascii.control_code.vt, std.ascii.control_code.ff => {
                         i += 1;
                         if (i < buffer.len) {
-                            continue :state .instruction;
+                            continue :state .search;
                         } else {
                             break :state;
                         }
@@ -94,7 +86,7 @@ pub const Parser = struct {
                         lineCount += 1;
 
                         if (i < buffer.len) {
-                            continue :state .instruction;
+                            continue :state .search;
                         } else {
                             break :state;
                         }
@@ -107,13 +99,13 @@ pub const Parser = struct {
                             return error.ExpectedAInstruction;
                         }
                     },
-                    '0'...'9', 'A'...'Z', 'a'...'z' => {
+                    '0'...'9', 'A'...'Z', 'a'...'z', '-', '!' => {
                         continue :state .cInstruction;
                     },
                     '(' => {
                         i += 1;
                         if (i < buffer.len) {
-                            continue :state .aInstruction;
+                            continue :state .label;
                         } else {
                             return error.ExpectedLabel;
                         }
@@ -125,50 +117,68 @@ pub const Parser = struct {
                 }
             },
             .aInstruction => {
+                std.debug.print("A Instruction, line: {any}\n", .{lineCount});
                 for (i..buffer.len) |j| {
-                    if (buffer[j] == '\n') {
-                        lineCount += 1;
-
-                        std.debug.print("A Instruction\n", .{});
-                        if (j + 1 < buffer.len) {
-                            i = j + 1;
-                            continue :state .instruction;
-                        } else {
+                    switch (buffer[j]) {
+                        '\n' => {
+                            lineCount += 1;
+                            if (j + 1 < buffer.len) {
+                                i = j + 1;
+                                continue :state .search;
+                            } else {
+                                i = j;
+                                break :state;
+                            }
+                        },
+                        '/' => {
                             i = j;
-                            break :state;
-                        }
+                            continue :state .comment;
+                        },
+                        else => {},
                     }
                 }
             },
             .cInstruction => {
+                std.debug.print("C Instruction, line: {any}\n", .{lineCount});
                 for (i..buffer.len) |j| {
-                    if (buffer[j] == '\n') {
-                        lineCount += 1;
-
-                        std.debug.print("C Instruction\n", .{});
-                        if (j + 1 < buffer.len) {
-                            i = j + 1;
-                            continue :state .instruction;
-                        } else {
+                    switch (buffer[j]) {
+                        '\n' => {
+                            lineCount += 1;
+                            if (j + 1 < buffer.len) {
+                                i = j + 1;
+                                continue :state .search;
+                            } else {
+                                i = j;
+                                break :state;
+                            }
+                        },
+                        '/' => {
                             i = j;
-                            break :state;
-                        }
+                            continue :state .comment;
+                        },
+                        else => {},
                     }
                 }
             },
             .label => {
+                std.debug.print("Label, line: {any}\n", .{lineCount});
                 for (i..buffer.len) |j| {
-                    if (buffer[j] == '\n') {
-                        lineCount += 1;
-
-                        std.debug.print("Label\n", .{});
-                        if (j + 1 < buffer.len) {
-                            i = j + 1;
-                            continue :state .instruction;
-                        } else {
+                    switch (buffer[j]) {
+                        '\n' => {
+                            lineCount += 1;
+                            if (j + 1 < buffer.len) {
+                                i = j + 1;
+                                continue :state .search;
+                            } else {
+                                i = j;
+                                break :state;
+                            }
+                        },
+                        '/' => {
                             i = j;
-                            break :state;
-                        }
+                            continue :state .comment;
+                        },
+                        else => {},
                     }
                 }
             },

@@ -1,33 +1,26 @@
 const std = @import("std");
+const builtin = @import("builtin");
 const parser = @import("parser.zig");
 
+var debug_allocator: std.heap.DebugAllocator(.{}) = .init;
+
 pub fn main() !void {
-    const buffer =
-        \\// Adds 1 + ... + 100
-        \\@i // This syntax makes me want to puke, it's rather dumb.
-        \\// Values and varibales shouldn't be declared with the same symbol!
-        \\M=1 // i=1
-        \\@sum
-        \\M=0 // sum=0
-        \\(LOOP)
-        \\@i
-        \\D=M // D=i
-        \\@100
-        \\D=D-A // D=i-100
-        \\@END
-        \\D;JGT // if (i-100)>0 goto END
-        \\@i
-        \\D=M // D=i
-        \\@sum
-        \\M=D+M // sum=sum+i
-        \\@i
-        \\M=M+1 // i=i+1
-        \\@LOOP
-        \\0;JMP // goto LOOP
-        \\(END)
-        \\@END
-        \\0;JMP // infinite loop
-    ;
+    const allocator: std.mem.Allocator, const is_debug: bool = gpa: {
+        break :gpa switch (builtin.mode) {
+            .Debug, .ReleaseSafe => .{ debug_allocator.allocator(), true },
+            .ReleaseFast, .ReleaseSmall => .{ std.heap.smp_allocator, false },
+        };
+    };
+
+    defer if (is_debug) {
+        std.debug.print("Debug allocator: {any}\n", .{debug_allocator.deinit()});
+    };
+
+    const file: std.fs.File = try std.fs.cwd().openFile("src/compTest.txt", .{});
+    const length: u64 = try file.getEndPos();
+    const buffer: []u8 = try allocator.alloc(u8, length);
+    defer allocator.free(buffer);
+    _ = try file.readAll(buffer);
 
     try parser.Parser.firstPass(buffer);
 }
