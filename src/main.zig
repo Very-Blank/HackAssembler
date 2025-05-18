@@ -16,7 +16,7 @@ pub fn main() !void {
         std.debug.print("Debug allocator: {any}\n", .{debug_allocator.deinit()});
     };
 
-    const file: std.fs.File = try std.fs.cwd().openFile("src/compTest.txt", .{});
+    const file: std.fs.File = try std.fs.cwd().openFile("src/test.txt", .{});
     const length: u64 = try file.getEndPos();
     const buffer: []u8 = try allocator.alloc(u8, length);
     defer allocator.free(buffer);
