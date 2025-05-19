@@ -112,12 +112,7 @@ pub const Parser = struct {
                         break :state;
                     },
                     '@' => {
-                        if (i + 1 < buffer.len) {
-                            i += 1;
-                            continue :state .aInstruction;
-                        }
-
-                        return error.ExpectedAInstruction;
+                        continue :state .aInstruction;
                     },
                     '0'...'9', 'A'...'Z', 'a'...'z', '-', '!' => {
                         continue :state .cInstruction;
@@ -132,7 +127,88 @@ pub const Parser = struct {
                 }
             },
             .aInstruction => {
+                if (i + 1 >= buffer.len) return error.@"Unexpected @ found";
+                // if (!std.ascii.isAlphabetic(buffer[i + 1]) and buffer[i + 1] != '_') return error.@"Label start was not alphabetic";
+
                 std.debug.print("A Instruction, line: {any}\n", .{currentLine});
+                switch (buffer[i + 1]) {
+                    '0'...'9' => {
+                        for (i + 1..buffer.len) |j| {
+                            switch (buffer[j]) {
+                                ' ', '\t', '\r', std.ascii.control_code.vt, std.ascii.control_code.ff => {
+                                    std.debug.print("A instruction: {s}, line: {any}\n", .{ buffer[i + 1 .. j], currentLine });
+                                    if (j + 1 < buffer.len) {
+                                        i = j + 1;
+                                        continue :state .newLine;
+                                    }
+
+                                    break :state;
+                                },
+                                '0'...'9' => {},
+                                '/' => {
+                                    std.debug.print("A instruction: {s}, line: {any}\n", .{ buffer[i + 1 .. j], currentLine });
+                                    if (j + 1 < buffer.len) {
+                                        i = j + 1;
+                                        continue :state .comment;
+                                    }
+
+                                    break :state;
+                                },
+                                '\n' => {
+                                    std.debug.print("A instruction: {s}, line: {any}\n", .{ buffer[i + 1 .. j], currentLine });
+
+                                    currentLine += 1;
+                                    if (j + 1 < buffer.len) {
+                                        i = j + 1;
+                                        continue :state .search;
+                                    }
+
+                                    break :state;
+                                },
+                            }
+                        }
+
+                        break :state;
+                    },
+                    'A'...'Z', 'a'...'z', '_' => {
+                        for (i + 1..buffer.len) |j| {
+                            switch (buffer[j]) {
+                                ' ', '\t', '\r', std.ascii.control_code.vt, std.ascii.control_code.ff => {
+                                    std.debug.print("A instruction: {s}, line: {any}\n", .{ buffer[i + 1 .. j], currentLine });
+                                    if (j + 1 < buffer.len) {
+                                        i = j + 1;
+                                        continue :state .newLine;
+                                    }
+
+                                    break :state;
+                                },
+                                '/' => {
+                                    std.debug.print("A instruction: {s}, line: {any}\n", .{ buffer[i + 1 .. j], currentLine });
+                                    if (j + 1 < buffer.len) {
+                                        i = j + 1;
+                                        continue :state .comment;
+                                    }
+
+                                    break :state;
+                                },
+                                '\n' => {
+                                    std.debug.print("A instruction: {s}, line: {any}\n", .{ buffer[i + 1 .. j], currentLine });
+
+                                    currentLine += 1;
+                                    if (j + 1 < buffer.len) {
+                                        i = j + 1;
+                                        continue :state .search;
+                                    }
+
+                                    break :state;
+                                },
+                                'A'...'Z', 'a'...'z', '0'...'9', '_' => {},
+                                else => error.UnexpectedCharacter,
+                            }
+                        }
+                    },
+                }
+
                 for (i..buffer.len) |j| {
                     switch (buffer[j]) {
                         '\n' => {
