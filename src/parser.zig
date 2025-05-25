@@ -130,7 +130,7 @@ pub const Parser = struct {
                 if (i + 1 >= buffer.len) return error.@"Unexpected @ found";
                 // if (!std.ascii.isAlphabetic(buffer[i + 1]) and buffer[i + 1] != '_') return error.@"Label start was not alphabetic";
 
-                std.debug.print("A Instruction, line: {any}\n", .{currentLine});
+                // std.debug.print("A Instruction, line: {any}\n", .{currentLine});
                 switch (buffer[i + 1]) {
                     '0'...'9' => {
                         for (i + 1..buffer.len) |j| {
@@ -165,6 +165,7 @@ pub const Parser = struct {
 
                                     break :state;
                                 },
+                                else => return error.UnexpectedCharacter,
                             }
                         }
 
@@ -203,30 +204,11 @@ pub const Parser = struct {
                                     break :state;
                                 },
                                 'A'...'Z', 'a'...'z', '0'...'9', '_' => {},
-                                else => error.UnexpectedCharacter,
+                                else => return error.UnexpectedCharacter,
                             }
                         }
                     },
-                }
-
-                for (i..buffer.len) |j| {
-                    switch (buffer[j]) {
-                        '\n' => {
-                            currentLine += 1;
-                            if (j + 1 < buffer.len) {
-                                i = j + 1;
-                                continue :state .search;
-                            }
-
-                            i = j;
-                            break :state;
-                        },
-                        '/' => {
-                            i = j;
-                            continue :state .comment;
-                        },
-                        else => {},
-                    }
+                    else => return error.UnexpectedCharacter,
                 }
             },
             .cInstruction => {
@@ -274,3 +256,5 @@ pub const Parser = struct {
         }
     }
 };
+
+pub fn label
