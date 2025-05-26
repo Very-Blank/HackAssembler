@@ -111,10 +111,48 @@ pub const Parser = struct {
                         break :state;
                     },
                     '@' => {
-                        continue :state .aInstruction;
+                        const nextState, const pos, const a = try aInstruction(buffer[i..buffer.len]);
+                        i += pos;
+
+                        switch (a) {
+                            .symbol => |symbol| {
+                                std.debug.print("aInstruction with symbol: {s}, Line {any}\n", .{ symbol, currentLine });
+                            },
+                            .value => |value| {
+                                std.debug.print("aInstruction with value: {any}, Line {any}\n", .{ value, currentLine });
+                            },
+                        }
+
+                        if (nextState == .search) {
+                            currentLine += 1;
+                        }
+
+                        if (i + 1 < buffer.len) {
+                            i += 1;
+                            continue :state nextState;
+                        } else break :state;
                     },
                     '0'...'9', 'A'...'Z', 'a'...'z', '-', '!' => {
-                        continue :state .cInstruction;
+                        std.debug.print("C Instruction, line: {any}\n", .{currentLine});
+                        for (i..buffer.len) |j| {
+                            switch (buffer[j]) {
+                                '\n' => {
+                                    currentLine += 1;
+                                    if (j + 1 < buffer.len) {
+                                        i = j + 1;
+                                        continue :state .search;
+                                    } else {
+                                        i = j;
+                                        break :state;
+                                    }
+                                },
+                                '/' => {
+                                    i = j;
+                                    continue :state .comment;
+                                },
+                                else => {},
+                            }
+                        }
                     },
                     '(' => {
                         const nextState, const pos, const insides = try label(buffer[i..buffer.len]);
@@ -133,99 +171,75 @@ pub const Parser = struct {
                     },
                 }
             },
-            .aInstruction => {},
-            .cInstruction => {
-                std.debug.print("C Instruction, line: {any}\n", .{currentLine});
-                for (i..buffer.len) |j| {
-                    switch (buffer[j]) {
-                        '\n' => {
-                            currentLine += 1;
-                            if (j + 1 < buffer.len) {
-                                i = j + 1;
-                                continue :state .search;
-                            } else {
-                                i = j;
-                                break :state;
-                            }
-                        },
-                        '/' => {
-                            i = j;
-                            continue :state .comment;
-                        },
-                        else => {},
-                    }
-                }
-            },
         }
     }
 
     /// Takes in a slice of the buffer that is in the format @......
-    /// Returns the next state, position of the ending character (whitespace, buffer end, /) and an union of what the instruction was.
-    inline fn aInstruction(slice: []u8) !struct { State, u64, union(enum) { number: u64, slice: []u8 } } {
+    /// Returns the next state, position of the ending character (whitespace, buffer end, /) and the instruction.
+    inline fn aInstruction(slice: []const u8) !struct { State, u64, instruction.A } {
         std.debug.assert(slice[0] == '@');
         if (slice.len < 2) return error.@"Unexpected @ found";
-        // if (!std.ascii.isAlphabetic(buffer[i + 1]) and buffer[i + 1] != '_') return error.@"Label start was not alphabetic";
 
-        // std.debug.print("A Instruction, line: {any}\n", .{currentLine});
         switch (slice[1]) {
-            // FIXME: something like this should be invalid!!!! 09448
-            '0'...'9' => |firstNum| {
-                var number: u64 = @intCast(firstNum - '0');
-
-                for (2..slice.len) |i| {
-                    switch (slice[i]) {
+            '0' => {
+                if (3 < slice.len) {
+                    switch (slice[2]) {
                         ' ', '\t', '\r', std.ascii.control_code.vt, std.ascii.control_code.ff => {
-                            return .{ State.newLine, i, .{ .number = number } };
-                        },
-                        '0'...'9' => |num| {
-                            number = number * 10 + @as(u64, @intCast((num - '0')));
+                            return .{ State.newLine, 2, .{ .value = 0 } };
                         },
                         '/' => {
-                            return .{ State.comment, i, .{ .number = number } };
+                            return .{ State.comment, 2, .{ .value = 0 } };
                         },
                         '\n' => {
-                            return .{ State.search, i, .{ .number = number } };
+                            return .{ State.search, 2, .{ .value = 0 } };
                         },
                         else => return error.UnexpectedCharacter,
                     }
                 }
 
-                return .{ State.newLine, slice.len - 1, .{ .number = number } };
+                return .{ State.search, 2, .{ .value = 0 } };
+            },
+            '1'...'9' => |firstNum| {
+                var number: u64 = @intCast(firstNum - '0');
+
+                for (2..slice.len) |i| {
+                    switch (slice[i]) {
+                        ' ', '\t', '\r', std.ascii.control_code.vt, std.ascii.control_code.ff => {
+                            return .{ State.newLine, i, .{ .value = number } };
+                        },
+                        '0'...'9' => |num| {
+                            number = number * 10 + @as(u64, @intCast((num - '0')));
+                        },
+                        '/' => {
+                            return .{ State.comment, i, .{ .value = number } };
+                        },
+                        '\n' => {
+                            return .{ State.search, i, .{ .value = number } };
+                        },
+                        else => return error.UnexpectedCharacter,
+                    }
+                }
+
+                return .{ State.newLine, slice.len - 1, .{ .value = number } };
             },
             'A'...'Z', 'a'...'z', '_' => {
                 for (2..slice.len) |i| {
                     switch (slice[i]) {
                         ' ', '\t', '\r', std.ascii.control_code.vt, std.ascii.control_code.ff => {
-                            return .{ State.newLine, i, .{ .slice = slice[1..i] } };
+                            return .{ State.newLine, i, .{ .symbol = slice[1..i] } };
                         },
                         '/' => {
-                            return .{ State.newLine, i, .{ .slice = slice[1..i] } };
-
-                            std.debug.print("A instruction: {s}, line: {any}\n", .{ buffer[i + 1 .. i], currentLine });
-                            if (i + 1 < buffer.len) {
-                                i = i + 1;
-                                continue :state .comment;
-                            }
-
-                            break :state;
+                            return .{ State.comment, i, .{ .symbol = slice[1..i] } };
                         },
                         '\n' => {
-                            std.debug.print("A instruction: {s}, line: {any}\n", .{ buffer[i + 1 .. i], currentLine });
-
-                            currentLine += 1;
-                            if (i + 1 < buffer.len) {
-                                i = i + 1;
-                                continue :state .search;
-                            }
-
-                            break :state;
+                            return .{ State.search, i, .{ .symbol = slice[1..i] } };
                         },
                         'A'...'Z', 'a'...'z', '0'...'9', '_' => {},
                         else => return error.UnexpectedCharacter,
                     }
                 }
 
-                // FIXME: slice ended return the instruction
+                return .{ State.newLine, slice.len - 1, .{ .symbol = slice[1..slice.len] } };
             },
             else => return error.UnexpectedCharacter,
         }
@@ -233,7 +247,7 @@ pub const Parser = struct {
 
     /// Takes in a slice of the buffer that is in the format (......
     /// Returns the next state, position of the ) and a slice that contains the insides of the label
-    inline fn label(slice: []u8) !struct { State, u64, []u8 } {
+    inline fn label(slice: []const u8) !struct { State, u64, []const u8 } {
         std.debug.assert(slice[0] == '(');
 
         if (slice.len < 3 or !std.ascii.isAlphabetic(slice[1])) return error.@"Unexpected ( found";

@@ -1,5 +1,5 @@
 pub const A = union(enum) {
-    symbol: []u8,
+    symbol: []const u8,
     value: u64,
 };
 
