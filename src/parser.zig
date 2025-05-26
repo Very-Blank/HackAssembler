@@ -17,7 +17,7 @@ pub const Parser = struct {
     jumpMap: std.StringHashMap(instruction.Jump),
     allocator: std.mem.Allocator,
 
-    pub fn init(allocator: std.mem.Allocator) Parser {
+    pub fn init(allocator: std.mem.Allocator) !Parser {
         var parser: Parser = .{
             .destMap = std.StringHashMap(instruction.Destination).init(allocator),
             .compMap = std.StringHashMap(instruction.Computation).init(allocator),
@@ -25,16 +25,18 @@ pub const Parser = struct {
             .allocator = allocator,
         };
 
+        errdefer parser.deinit();
+
         inline for (@typeInfo(instruction.Destination).@"enum".fields) |dest| {
-            parser.destMap.put(dest.name, dest.value);
+            try parser.destMap.put(dest.name, dest.value);
         }
 
         inline for (@typeInfo(instruction.Computation).@"enum".fields) |comp| {
-            parser.compMap.put(comp.name, comp.value);
+            try parser.compMap.put(comp.name, comp.value);
         }
 
         inline for (@typeInfo(instruction.Jump).@"enum".fields) |jump| {
-            parser.jumpMap.put(jump.name, jump.value);
+            try parser.jumpMap.put(jump.name, jump.value);
         }
     }
 
