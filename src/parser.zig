@@ -176,6 +176,7 @@ pub const Parser = struct {
 
     /// Takes in a slice of the buffer that is in the format @......
     /// Returns the next state, position of the ending character (whitespace, buffer end, /) and the instruction.
+    /// If next state is search the function found a newline character.
     inline fn aInstruction(slice: []const u8) !struct { State, u64, instruction.A } {
         std.debug.assert(slice[0] == '@');
         if (slice.len < 2) return error.@"Unexpected @ found";
