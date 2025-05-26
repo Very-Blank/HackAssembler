@@ -176,6 +176,14 @@ pub const Parser = struct {
 
     inline fn cInstruction(self: Parser, slice: []u8) !struct { State, u64, instruction.C } {
         std.debug.assert(isCInstructionStart(slice[0]));
+        for (1..slice.len) |i| {
+            switch (slice[i]) {
+                ';' => {},
+                '=' => {},
+                ' ', '\t', '\r', std.ascii.control_code.vt, std.ascii.control_code.ff => {},
+                else => return error.UnexpectedCharacter,
+            }
+        }
     }
 
     /// Takes in a slice of the buffer that is in the format @......
