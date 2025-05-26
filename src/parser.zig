@@ -174,6 +174,10 @@ pub const Parser = struct {
         }
     }
 
+    inline fn cInstruction(self: Parser, slice: []u8) !struct { State, u64, instruction.C } {
+        std.debug.assert(isCInstructionStart(slice[0]));
+    }
+
     /// Takes in a slice of the buffer that is in the format @......
     /// Returns the next state, position of the ending character (whitespace, buffer end, /) and the instruction.
     /// If next state is search the function found a newline character.
@@ -264,5 +268,12 @@ pub const Parser = struct {
         }
 
         return error.@"Unexpected ( found";
+    }
+
+    fn isCInstructionStart(char: u8) bool {
+        switch (char) {
+            '0'...'9', 'A'...'Z', 'a'...'z', '-', '!' => return true,
+            else => return false,
+        }
     }
 };
