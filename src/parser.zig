@@ -2,11 +2,13 @@ const std = @import("std");
 const instruction = @import("instruction.zig");
 const FirstPass = @import("firstPass.zig");
 
-const State = enum {
+const FirstPassState = enum {
     newLine,
     comment,
     search,
 };
+
+const CInstructionState = enum {};
 
 pub const Parser = struct {
     destMap: std.StringHashMap(instruction.Destination),
@@ -46,7 +48,7 @@ pub const Parser = struct {
 
         var i: u64 = 0;
 
-        state: switch (State.search) {
+        state: switch (FirstPassState.search) {
             .newLine => {
                 switch (buffer[i]) {
                     '\n' => {
@@ -174,14 +176,18 @@ pub const Parser = struct {
         }
     }
 
-    inline fn cInstruction(self: Parser, slice: []u8) !struct { State, u64, instruction.C } {
+    inline fn cInstruction(self: Parser, slice: []u8) !struct { FirstPassState, u64, instruction.C } {
         std.debug.assert(isCInstructionStart(slice[0]));
+        //M=D
+        //0;JMP
+        //D=M;JNE
         for (1..slice.len) |i| {
             switch (slice[i]) {
                 ';' => {},
                 '=' => {},
-                ' ', '\t', '\r', std.ascii.control_code.vt, std.ascii.control_code.ff => {},
-                else => return error.UnexpectedCharacter,
+                // ' ', '\t', '\r', std.ascii.control_code.vt, std.ascii.control_code.ff => {},
+                // else => return error.UnexpectedCharacter,
+                else => {},
             }
         }
     }
@@ -189,7 +195,7 @@ pub const Parser = struct {
     /// Takes in a slice of the buffer that is in the format @......
     /// Returns the next state, position of the ending character (whitespace, buffer end, /) and the instruction.
     /// If next state is search the function found a newline character.
-    inline fn aInstruction(slice: []const u8) !struct { State, u64, instruction.A } {
+    inline fn aInstruction(slice: []const u8) !struct { FirstPassState, u64, instruction.A } {
         std.debug.assert(slice[0] == '@');
         if (slice.len < 2) return error.@"Unexpected @ found";
 
@@ -198,19 +204,19 @@ pub const Parser = struct {
                 if (3 < slice.len) {
                     switch (slice[2]) {
                         ' ', '\t', '\r', std.ascii.control_code.vt, std.ascii.control_code.ff => {
-                            return .{ State.newLine, 2, .{ .value = 0 } };
+                            return .{ FirstPassState.newLine, 2, .{ .value = 0 } };
                         },
                         '/' => {
-                            return .{ State.comment, 2, .{ .value = 0 } };
+                            return .{ FirstPassState.comment, 2, .{ .value = 0 } };
                         },
                         '\n' => {
-                            return .{ State.search, 2, .{ .value = 0 } };
+                            return .{ FirstPassState.search, 2, .{ .value = 0 } };
                         },
                         else => return error.UnexpectedCharacter,
                     }
                 }
 
-                return .{ State.search, 2, .{ .value = 0 } };
+                return .{ FirstPassState.search, 2, .{ .value = 0 } };
             },
             '1'...'9' => |firstNum| {
                 var number: u64 = @intCast(firstNum - '0');
@@ -218,41 +224,41 @@ pub const Parser = struct {
                 for (2..slice.len) |i| {
                     switch (slice[i]) {
                         ' ', '\t', '\r', std.ascii.control_code.vt, std.ascii.control_code.ff => {
-                            return .{ State.newLine, i, .{ .value = number } };
+                            return .{ FirstPassState.newLine, i, .{ .value = number } };
                         },
                         '0'...'9' => |num| {
                             number = number * 10 + @as(u64, @intCast((num - '0')));
                         },
                         '/' => {
-                            return .{ State.comment, i, .{ .value = number } };
+                            return .{ FirstPassState.comment, i, .{ .value = number } };
                         },
                         '\n' => {
-                            return .{ State.search, i, .{ .value = number } };
+                            return .{ FirstPassState.search, i, .{ .value = number } };
                         },
                         else => return error.UnexpectedCharacter,
                     }
                 }
 
-                return .{ State.newLine, slice.len - 1, .{ .value = number } };
+                return .{ FirstPassState.newLine, slice.len - 1, .{ .value = number } };
             },
             'A'...'Z', 'a'...'z', '_' => {
                 for (2..slice.len) |i| {
                     switch (slice[i]) {
                         ' ', '\t', '\r', std.ascii.control_code.vt, std.ascii.control_code.ff => {
-                            return .{ State.newLine, i, .{ .symbol = slice[1..i] } };
+                            return .{ FirstPassState.newLine, i, .{ .symbol = slice[1..i] } };
                         },
                         '/' => {
-                            return .{ State.comment, i, .{ .symbol = slice[1..i] } };
+                            return .{ FirstPassState.comment, i, .{ .symbol = slice[1..i] } };
                         },
                         '\n' => {
-                            return .{ State.search, i, .{ .symbol = slice[1..i] } };
+                            return .{ FirstPassState.search, i, .{ .symbol = slice[1..i] } };
                         },
                         'A'...'Z', 'a'...'z', '0'...'9', '_' => {},
                         else => return error.UnexpectedCharacter,
                     }
                 }
 
-                return .{ State.newLine, slice.len - 1, .{ .symbol = slice[1..slice.len] } };
+                return .{ FirstPassState.newLine, slice.len - 1, .{ .symbol = slice[1..slice.len] } };
             },
             else => return error.UnexpectedCharacter,
         }
@@ -260,7 +266,7 @@ pub const Parser = struct {
 
     /// Takes in a slice of the buffer that is in the format (......
     /// Returns the next state, position of the ) and a slice that contains the insides of the label
-    inline fn label(slice: []const u8) !struct { State, u64, []const u8 } {
+    inline fn label(slice: []const u8) !struct { FirstPassState, u64, []const u8 } {
         std.debug.assert(slice[0] == '(');
 
         if (slice.len < 3 or !std.ascii.isAlphabetic(slice[1])) return error.@"Unexpected ( found";
@@ -269,7 +275,7 @@ pub const Parser = struct {
             switch (slice[i]) {
                 '0'...'9', 'A'...'Z', 'a'...'z', '_' => {},
                 ')' => {
-                    return .{ State.newLine, i, slice[1..i] };
+                    return .{ FirstPassState.newLine, i, slice[1..i] };
                 },
                 else => return error.UnexpectedCharacter,
             }
@@ -278,7 +284,7 @@ pub const Parser = struct {
         return error.@"Unexpected ( found";
     }
 
-    fn isCInstructionStart(char: u8) bool {
+    inline fn isCInstructionStart(char: u8) bool {
         switch (char) {
             '0'...'9', 'A'...'Z', 'a'...'z', '-', '!' => return true,
             else => return false,
