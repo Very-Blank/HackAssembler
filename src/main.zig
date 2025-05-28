@@ -22,5 +22,8 @@ pub fn main() !void {
     defer allocator.free(buffer);
     _ = try file.readAll(buffer);
 
-    try parser.Parser.firstPass(buffer);
+    var par = try parser.Parser.init(allocator);
+    defer par.deinit();
+
+    try par.firstPass(buffer);
 }

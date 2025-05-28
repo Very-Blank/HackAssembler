@@ -19,10 +19,10 @@ pub const Computation = enum {
 
 pub const Jump = enum { JGT, JEQ, JGE, JLT, JNE, JLE, JMP };
 
-pub const C = struct {
-    dest: Destination,
-    comp: Computation,
-    jump: Jump,
+pub const C = union(enum) {
+    dcj: struct { dest: Destination, comp: Computation, jump: Jump },
+    dc: struct { dest: Destination, comp: Computation },
+    cj: struct { comp: Computation, jump: Jump },
 };
 
 pub const Instruction = struct {
