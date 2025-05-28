@@ -184,42 +184,121 @@ pub const Parser = struct {
         var dest: ?[]const u8 = null;
         var comp: ?[]const u8 = null;
         var jump: ?[]const u8 = null;
-
-        // var current: ?[]const u8 = null;
-
         //0;JMP
 
-        var splitter, const destOrComp = lookForSlice(slice);
-        var end = destOrComp.len;
+        var splitter: SliceSplitter, const current: []const u8 = try lookForSlice(slice);
+        var end = current.len;
 
-        // Make this goto switch
-        switch (splitter) {
+        init: switch (splitter) {
             .@";" => {
-                if (dest == null) {
-                    comp = destOrComp;
+                comp = current;
+            },
+            .@"=" => {
+                dest = current;
+            },
+            .space => {
+                for (end..slice.len) |i| {
+                    switch (slice[i]) {
+                        '\n' => return error.UnexpectedCharacter,
+                        ';' => {
+                            splitter = .@";";
+                            comp = current;
+                            end = i;
+                            break :init;
+                        },
+                        '=' => {
+                            splitter = .@"=";
+                            dest = current;
+                            end = i;
+                            break :init;
+                        },
+                        else => {},
+                    }
                 }
 
+                return error.UnexpectedCharacter;
+            },
+            else => return error.UnexpectedCharacter,
+        }
+
+        state: switch (splitter) {
+            .@";" => {
                 if (slice.len < end.len + 1) return error.UnexpectedCharacter;
                 splitter, jump = lookForSlice(slice[end.len + 1 .. slice.len]);
+                end += 1 + jump.len;
+
                 switch (splitter) {
-                    .space => {},
-                    .@"\n" => {},
+                    .@"\n" => {
+                        break :state;
+                    },
+                    .space => {
+                        for (end..slice.len) |i| {
+                            switch (slice[i]) {
+                                '\n' => {
+                                    end = i;
+                                    break :state;
+                                },
+                                ' ', '\t', '\r', std.ascii.control_code.vt, std.ascii.control_code.ff => {},
+                                else => return error.UnexpectedCharacter,
+                            }
+                        }
+                    },
                     else => return error.UnexpectedCharacter,
                 }
             },
             .@"=" => {
-                dest = destOrComp;
-                if (slice.len < destOrComp.len + 1) return error.UnexpectedCharacter;
-                splitter, comp = lookForSlice(slice[destOrComp.len + 1 .. slice.len]);
+                if (slice.len < end + 1) return error.UnexpectedCharacter;
+                splitter, comp = lookForSlice(slice[end + 1 .. slice.len]);
+                end += 1 + comp.len;
+
                 switch (splitter) {
-                    .space => {},
-                    .@"\n" => {},
-                    .@";" => {},
+                    .@";" => continue :state .@";",
+                    .@"\n" => break :state,
+                    .space => {
+                        for (end..slice.len) |i| {
+                            switch (slice[i]) {
+                                ' ', '\t', '\r', std.ascii.control_code.vt, std.ascii.control_code.ff => {},
+                                '\n' => {
+                                    end = i;
+                                    break :state;
+                                },
+                                ';' => {
+                                    end = i;
+                                    continue :state .@";";
+                                },
+                                else => return error.UnexpectedCharacter,
+                            }
+                        }
+
+                        return error.UnexpectedCharacter;
+                    },
                     else => return error.UnexpectedCharacter,
                 }
             },
-            .space => {},
             else => return error.UnexpectedCharacter,
+        }
+
+        // var dest: ?[]const u8 = null;
+        // var comp: ?[]const u8 = null;
+        // var jump: ?[]const u8 = null;
+        //
+        //
+        // destMap: std.StringHashMap(instruction.Destination),
+        // compMap: std.StringHashMap(instruction.Computation),
+        // jumpMap: std.StringHashMap(instruction.Jump),
+
+        if (dest and comp and !jump) {
+            const cDest = if (dest) |value| value else unreachable;
+            const cComp = if (comp) |value| value else unreachable;
+        } else if (!dest and comp and jump) {
+            const cComp = if (comp) |value| value else unreachable;
+            const cJump = if (jump) |value| value else unreachable;
+        } else if (dest and comp and jump) {
+            const cDest = if (dest) |value| value else unreachable;
+            const cComp = if (comp) |value| value else unreachable;
+            const cJump = if (jump) |value| value else unreachable;
+        } else {
+            unreachable;
         }
     }
 
@@ -230,7 +309,7 @@ pub const Parser = struct {
         space,
     };
 
-    inline fn lookForSlice(slice: []u8) !struct { SliceSplitter, []u8 } {
+    inline fn lookForSlice(slice: []const u8) !struct { SliceSplitter, []const u8 } {
         var start: u64 = 0;
         for (0..slice.len) |i| {
             switch (slice[i]) {
