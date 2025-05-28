@@ -176,20 +176,89 @@ pub const Parser = struct {
         }
     }
 
-    inline fn cInstruction(self: Parser, slice: []u8) !struct { FirstPassState, u64, instruction.C } {
+    inline fn cInstruction(self: Parser, slice: []const u8) !struct { FirstPassState, u64, instruction.C } {
         std.debug.assert(isCInstructionStart(slice[0]));
         //M=D
-        //0;JMP
         //D=M;JNE
-        for (1..slice.len) |i| {
+
+        var dest: ?[]const u8 = null;
+        var comp: ?[]const u8 = null;
+        var jump: ?[]const u8 = null;
+
+        // var current: ?[]const u8 = null;
+
+        //0;JMP
+
+        var splitter, const destOrComp = lookForSlice(slice);
+        var end = destOrComp.len;
+
+        // Make this goto switch
+        switch (splitter) {
+            .@";" => {
+                if (dest == null) {
+                    comp = destOrComp;
+                }
+
+                if (slice.len < end.len + 1) return error.UnexpectedCharacter;
+                splitter, jump = lookForSlice(slice[end.len + 1 .. slice.len]);
+                switch (splitter) {
+                    .space => {},
+                    .@"\n" => {},
+                    else => return error.UnexpectedCharacter,
+                }
+            },
+            .@"=" => {
+                dest = destOrComp;
+                if (slice.len < destOrComp.len + 1) return error.UnexpectedCharacter;
+                splitter, comp = lookForSlice(slice[destOrComp.len + 1 .. slice.len]);
+                switch (splitter) {
+                    .space => {},
+                    .@"\n" => {},
+                    .@";" => {},
+                    else => return error.UnexpectedCharacter,
+                }
+            },
+            .space => {},
+            else => return error.UnexpectedCharacter,
+        }
+    }
+
+    const SliceSplitter = enum {
+        @";",
+        @"\n",
+        @"=",
+        space,
+    };
+
+    inline fn lookForSlice(slice: []u8) !struct { SliceSplitter, []u8 } {
+        var start: u64 = 0;
+        for (0..slice.len) |i| {
             switch (slice[i]) {
-                ';' => {},
-                '=' => {},
-                // ' ', '\t', '\r', std.ascii.control_code.vt, std.ascii.control_code.ff => {},
-                // else => return error.UnexpectedCharacter,
+                ' ', '\t', '\r', std.ascii.control_code.vt, std.ascii.control_code.ff => {},
+                '\n' => return error.NoStartForSlice,
+                else => start = i,
+            }
+        }
+
+        for (start..slice.len) |i| {
+            switch (slice[i]) {
+                ' ', '\t', '\r', std.ascii.control_code.vt, std.ascii.control_code.ff => {
+                    return .{ SliceSplitter.space, slice[start..i] };
+                },
+                '\n' => {
+                    return .{ SliceSplitter.@"\n", slice[start..i] };
+                },
+                '=' => {
+                    return .{ SliceSplitter.@"=", slice[start..i] };
+                },
+                ';' => {
+                    return .{ SliceSplitter.@";", slice[start..i] };
+                },
                 else => {},
             }
         }
+
+        return error.@"Slice ended, but no splitter was found";
     }
 
     /// Takes in a slice of the buffer that is in the format @......
