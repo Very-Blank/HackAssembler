@@ -1,6 +1,7 @@
 const std = @import("std");
 const instruction = @import("instruction.zig");
-const FirstPass = @import("firstPass.zig");
+const FirstPass = @import("firstPass.zig").FirstPass;
+const SymbolTable = @import("symbolTable.zig").SymbolTable;
 
 pub const Parser = struct {
     destMap: std.StringHashMap(instruction.Destination),
@@ -45,15 +46,17 @@ pub const Parser = struct {
         search,
     };
 
-    pub fn firstPass(self: *const Parser, buffer: []const u8) !void {
+    pub fn firstPass(self: *const Parser, buffer: []const u8) !FirstPass {
         var instructions: std.ArrayList(instruction.Instruction) = std.ArrayList(instruction.Instruction).init(self.allocator);
         errdefer instructions.deinit();
+
+        var symbolTable: SymbolTable = SymbolTable.init(self.allocator);
+        errdefer symbolTable.deinit();
 
         var currentInstruction: u64 = 0;
         var currentLine: u64 = 1;
 
         var i: u64 = 0;
-
         state: switch (FirstPassState.search) {
             .newLine => {
                 switch (buffer[i]) {
@@ -149,7 +152,7 @@ pub const Parser = struct {
                         const nextState, const pos, const insides = try label(buffer[i..buffer.len]);
                         i += pos;
 
-                        std.debug.print("Label: {s}, Line {any}\n", .{ insides, currentLine });
+                        try symbolTable.labels.put(insides, currentInstruction);
 
                         if (i + 1 < buffer.len) {
                             i += 1;
@@ -157,16 +160,17 @@ pub const Parser = struct {
                         } else break :state;
                     },
                     else => {
-                        std.debug.print("Line: {any}\n", .{currentLine});
                         return error.UnexpectedCharacter;
                     },
                 }
             },
         }
 
-        for (instructions.items) |item| {
-            std.debug.print("Line {any}, Instruction: {any}\n", .{ item.line, item.type });
-        }
+        return .{
+            .symbolTable = symbolTable,
+            .instructions = try instructions.toOwnedSlice(),
+            .allocator = self.allocator,
+        };
     }
 
     /// Position might be end of the slice!
