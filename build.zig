@@ -21,4 +21,19 @@ pub fn build(b: *std.Build) void {
 
     const run_step = b.step("run", "Run the app");
     run_step.dependOn(&run_cmd.step);
+
+    const cInstructionTest = b.createModule(.{
+        .root_source_file = b.path("src/cInstructionTest.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
+
+    const unitCInstructionTest = b.addTest(.{
+        .root_module = cInstructionTest,
+    });
+
+    const runUnitCInstructionsTest = b.addRunArtifact(unitCInstructionTest);
+
+    const test_step = b.step("test", "Run unit tests");
+    test_step.dependOn(&runUnitCInstructionsTest.step);
 }

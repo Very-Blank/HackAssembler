@@ -2,14 +2,6 @@ const std = @import("std");
 const instruction = @import("instruction.zig");
 const FirstPass = @import("firstPass.zig");
 
-const FirstPassState = enum {
-    newLine,
-    comment,
-    search,
-};
-
-const CInstructionState = enum {};
-
 pub const Parser = struct {
     destMap: std.StringHashMap(instruction.Destination),
     compMap: std.StringHashMap(instruction.Computation),
@@ -47,12 +39,18 @@ pub const Parser = struct {
         self.jumpMap.deinit();
     }
 
+    const FirstPassState = enum {
+        newLine,
+        comment,
+        search,
+    };
+
     pub fn firstPass(self: *const Parser, buffer: []const u8) !void {
-        // var instructions: std.ArrayList(instruction.Instruction) = std.ArrayList(instruction.Instruction).init(self.allocator);
-        // var instCount: u64 = 0;
+        var instructions: std.ArrayList(instruction.Instruction) = std.ArrayList(instruction.Instruction).init(self.allocator);
+        errdefer instructions.deinit();
+
+        var currentInstruction: u64 = 0;
         var currentLine: u64 = 1;
-        //
-        // var cInst: [3]u8 = .{ 0, 0, 0 };
 
         var i: u64 = 0;
 
@@ -79,7 +77,6 @@ pub const Parser = struct {
             .comment => {
                 i += 1;
                 if (i < buffer.len and buffer[i] == '/') {
-                    std.debug.print("Comment, line: {any}\n", .{currentLine});
                     for (i..buffer.len) |j| {
                         if (buffer[j] == '\n') {
                             currentLine += 1;
@@ -124,18 +121,10 @@ pub const Parser = struct {
                         const nextState, const pos, const a = try aInstruction(buffer[i..buffer.len]);
                         i += pos;
 
-                        switch (a) {
-                            .symbol => |symbol| {
-                                std.debug.print("aInstruction with symbol: {s}, Line {any}\n", .{ symbol, currentLine });
-                            },
-                            .value => |value| {
-                                std.debug.print("aInstruction with value: {any}, Line {any}\n", .{ value, currentLine });
-                            },
-                        }
-
-                        if (nextState == .search) { // FIX: This might be a bug currentline could be extra counted by search!
-                            currentLine += 1;
-                        }
+                        try instructions.append(.{
+                            .line = currentLine,
+                            .type = .{ .a = a },
+                        });
 
                         if (i + 1 < buffer.len) {
                             i += 1;
@@ -146,9 +135,16 @@ pub const Parser = struct {
                         const nextState, const pos, const c = try self.cInstruction(buffer[i..buffer.len]);
                         i += pos;
 
-                        std.debug.print("C Instruction, line: {any}\n", .{c});
+                        try instructions.append(.{
+                            .line = currentLine,
+                            .type = .{ .c = c },
+                        });
 
-                        continue :state nextState;
+                        currentInstruction += 1;
+
+                        if (i < buffer.len) {
+                            continue :state nextState;
+                        } else break :state;
                     },
                     '(' => {
                         const nextState, const pos, const insides = try label(buffer[i..buffer.len]);
@@ -168,22 +164,23 @@ pub const Parser = struct {
                 }
             },
         }
+
+        for (instructions.items) |item| {
+            std.debug.print("Line {any}, Instruction: {any}\n", .{ item.line, item.type });
+        }
     }
 
+    /// Position might be end of the slice!
     inline fn cInstruction(self: *const Parser, slice: []const u8) !struct { FirstPassState, u64, instruction.C } {
         std.debug.assert(isCInstructionStart(slice[0]));
-        //M=D
-        //D=M;JNE
 
         var dest: ?[]const u8 = null;
         var comp: ?[]const u8 = null;
         var jump: ?[]const u8 = null;
 
         var nextFirstPassState: FirstPassState = .search;
-        //0;JMP
 
-        var splitter: SliceSplitter, const current: []const u8 = try lookForSlice(slice);
-        var end = current.len;
+        var splitter: SliceSplitter, var end, const current: []const u8 = try lookForSlice(slice);
 
         init: switch (splitter) {
             .@";" => {
@@ -195,7 +192,7 @@ pub const Parser = struct {
             .space => {
                 for (end..slice.len) |i| {
                     switch (slice[i]) {
-                        '\n' => return error.UnexpectedCharacter1,
+                        ' ', '\t', '\r', std.ascii.control_code.vt, std.ascii.control_code.ff => {},
                         ';' => {
                             splitter = .@";";
                             comp = current;
@@ -208,23 +205,29 @@ pub const Parser = struct {
                             end = i;
                             break :init;
                         },
-                        else => {},
+                        else => return error.UnexpectedCharacter,
                     }
                 }
 
-                return error.UnexpectedCharacter2;
+                return error.UnexpectedCharacter;
             },
-            else => return error.UnexpectedCharacter3,
+            else => return error.UnexpectedCharacter,
         }
 
         state: switch (splitter) {
             .@";" => {
-                if (slice.len < end + 1) return error.UnexpectedCharacter4;
-                splitter, jump = try lookForSlice(slice[end + 1 .. slice.len]);
-                end += 1 + jump.?.len;
+                if (slice.len < end + 1) return error.UnexpectedCharacter;
+                end += 1;
+
+                splitter, const j, jump = try lookForSlice(slice[end..slice.len]);
+                end += j;
 
                 switch (splitter) {
-                    .@"\n" => {
+                    .@"\n", .EOF => {
+                        break :state;
+                    },
+                    .@"/" => {
+                        nextFirstPassState = .comment;
                         break :state;
                     },
                     .space => {
@@ -240,21 +243,27 @@ pub const Parser = struct {
                                     break :state;
                                 },
                                 ' ', '\t', '\r', std.ascii.control_code.vt, std.ascii.control_code.ff => {},
-                                else => return error.UnexpectedCharacter5,
+                                else => return error.UnexpectedCharacter,
                             }
                         }
                     },
-                    else => return error.UnexpectedCharacter6,
+                    else => return error.UnexpectedCharacter,
                 }
             },
             .@"=" => {
-                if (slice.len < end + 1) return error.UnexpectedCharacter7;
-                splitter, comp = try lookForSlice(slice[end + 1 .. slice.len]);
-                end += 1 + comp.?.len;
+                if (slice.len < end + 1) return error.UnexpectedCharacter;
+                end += 1;
+
+                splitter, const j, comp = try lookForSlice(slice[end..slice.len]);
+                end += j;
 
                 switch (splitter) {
                     .@";" => continue :state .@";",
                     .@"\n" => break :state,
+                    .@"/" => {
+                        nextFirstPassState = .comment;
+                        break :state;
+                    },
                     .space => {
                         for (end..slice.len) |i| {
                             switch (slice[i]) {
@@ -272,16 +281,16 @@ pub const Parser = struct {
                                     end = i;
                                     continue :state .@";";
                                 },
-                                else => return error.UnexpectedCharacter8,
+                                else => return error.UnexpectedCharacter,
                             }
                         }
 
-                        return error.UnexpectedCharacter9;
+                        return error.UnexpectedCharacter;
                     },
-                    else => return error.UnexpectedCharacter10,
+                    else => return error.UnexpectedCharacter,
                 }
             },
-            else => return error.UnexpectedCharacter11,
+            else => return error.UnexpectedCharacter,
         }
 
         if (dest != null and comp != null and jump != null) {
@@ -290,7 +299,7 @@ pub const Parser = struct {
             const cJump = if (jump) |value| value else unreachable;
 
             return .{
-                FirstPassState.search, end, instruction.C{
+                nextFirstPassState, end, instruction.C{
                     .dcj = .{
                         .dest = if (self.destMap.get(cDest)) |value| value else return error.InvalidDestination,
                         .comp = if (self.compMap.get(cComp)) |value| value else return error.InvalidComputation,
@@ -303,7 +312,7 @@ pub const Parser = struct {
             const cComp = if (comp) |value| value else unreachable;
 
             return .{
-                FirstPassState.search, end, instruction.C{
+                nextFirstPassState, end, instruction.C{
                     .dc = .{
                         .dest = if (self.destMap.get(cDest)) |value| value else return error.InvalidDestination,
                         .comp = if (self.compMap.get(cComp)) |value| value else return error.InvalidComputation,
@@ -315,7 +324,7 @@ pub const Parser = struct {
             const cJump = if (jump) |value| value else unreachable;
 
             return .{
-                FirstPassState.search, end, instruction.C{
+                nextFirstPassState, end, instruction.C{
                     .cj = .{
                         .comp = if (self.compMap.get(cComp)) |value| value else return error.InvalidComputation,
                         .jump = if (self.jumpMap.get(cJump)) |value| value else return error.InvalidJump,
@@ -328,13 +337,17 @@ pub const Parser = struct {
     }
 
     const SliceSplitter = enum {
+        EOF,
         @";",
+        @"/",
         @"\n",
         @"=",
         space,
     };
 
-    inline fn lookForSlice(slice: []const u8) !struct { SliceSplitter, []const u8 } {
+    /// Returns the splitter that split the slice, the end position of the splitter and the new slice.
+    /// IF THE SLICE ENDS before finding splitter, the end position will be slice.len!
+    inline fn lookForSlice(slice: []const u8) !struct { SliceSplitter, u64, []const u8 } {
         var start: u64 = 0;
         for (0..slice.len) |i| {
             switch (slice[i]) {
@@ -350,22 +363,25 @@ pub const Parser = struct {
         for (start..slice.len) |i| {
             switch (slice[i]) {
                 ' ', '\t', '\r', std.ascii.control_code.vt, std.ascii.control_code.ff => {
-                    return .{ SliceSplitter.space, slice[start..i] };
+                    return .{ SliceSplitter.space, i, slice[start..i] };
                 },
                 '\n' => {
-                    return .{ SliceSplitter.@"\n", slice[start..i] };
+                    return .{ SliceSplitter.@"\n", i, slice[start..i] };
                 },
                 '=' => {
-                    return .{ SliceSplitter.@"=", slice[start..i] };
+                    return .{ SliceSplitter.@"=", i, slice[start..i] };
                 },
                 ';' => {
-                    return .{ SliceSplitter.@";", slice[start..i] };
+                    return .{ SliceSplitter.@";", i, slice[start..i] };
+                },
+                '/' => {
+                    return .{ SliceSplitter.@"/", i, slice[start..i] };
                 },
                 else => {},
             }
         }
 
-        return error.@"Slice ended, but no splitter was found";
+        return .{ SliceSplitter.EOF, slice.len, slice[start..slice.len] };
     }
 
     /// Takes in a slice of the buffer that is in the format @......
