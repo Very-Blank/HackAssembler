@@ -23,7 +23,7 @@ pub fn build(b: *std.Build) void {
     run_step.dependOn(&run_cmd.step);
 
     const cInstructionTest = b.createModule(.{
-        .root_source_file = b.path("src/cInstructionTest.zig"),
+        .root_source_file = b.path("src/cInstructionTests.zig"),
         .target = target,
         .optimize = optimize,
     });
@@ -36,4 +36,18 @@ pub fn build(b: *std.Build) void {
 
     const test_step = b.step("test", "Run unit tests");
     test_step.dependOn(&runUnitCInstructionsTest.step);
+
+    const parsingTests = b.createModule(.{
+        .root_source_file = b.path("src/parsingTests.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
+
+    const unitParsingTests = b.addTest(.{
+        .root_module = parsingTests,
+    });
+
+    const runUnitParsingTests = b.addRunArtifact(unitParsingTests);
+
+    test_step.dependOn(&runUnitParsingTests.step);
 }
