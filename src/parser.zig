@@ -126,8 +126,7 @@ pub const Parser = struct {
                             .type = .{ .a = a },
                         });
 
-                        if (i + 1 < buffer.len) {
-                            i += 1;
+                        if (i < buffer.len) {
                             continue :state nextState;
                         } else break :state;
                     },
@@ -386,7 +385,6 @@ pub const Parser = struct {
 
     /// Takes in a slice of the buffer that is in the format @......
     /// Returns the next state, position of the ending character (whitespace, buffer end, /) and the instruction.
-    /// If next state is search the function found a newline character.
     inline fn aInstruction(slice: []const u8) !struct { FirstPassState, u64, instruction.A } {
         std.debug.assert(slice[0] == '@');
         if (slice.len < 2) return error.@"Unexpected @ found";
@@ -431,7 +429,7 @@ pub const Parser = struct {
                     }
                 }
 
-                return .{ FirstPassState.newLine, slice.len - 1, .{ .value = number } };
+                return .{ FirstPassState.newLine, slice.len, .{ .value = number } };
             },
             'A'...'Z', 'a'...'z', '_' => {
                 for (2..slice.len) |i| {
@@ -450,7 +448,7 @@ pub const Parser = struct {
                     }
                 }
 
-                return .{ FirstPassState.newLine, slice.len - 1, .{ .symbol = slice[1..slice.len] } };
+                return .{ FirstPassState.newLine, slice.len, .{ .symbol = slice[1..slice.len] } };
             },
             else => return error.UnexpectedCharacter,
         }
