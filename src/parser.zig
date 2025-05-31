@@ -1,6 +1,6 @@
 const std = @import("std");
 const instruction = @import("instruction.zig");
-const FirstPass = @import("firstPass.zig").FirstPass;
+const SecondPass = @import("secondPass.zig").SecondPass;
 const SymbolTable = @import("symbolTable.zig").SymbolTable;
 
 pub const Parser = struct {
@@ -46,7 +46,8 @@ pub const Parser = struct {
         search,
     };
 
-    pub fn firstPass(self: *const Parser, buffer: []const u8) !FirstPass {
+    /// FirstPass could contain pointers to the given buffer.
+    pub fn firstPass(self: *const Parser, buffer: []const u8) !SecondPass {
         var instructions: std.ArrayList(instruction.Instruction) = std.ArrayList(instruction.Instruction).init(self.allocator);
         errdefer instructions.deinit();
 
@@ -129,6 +130,8 @@ pub const Parser = struct {
                             .type = .{ .a = a },
                         });
 
+                        currentInstruction += 1;
+
                         if (i < buffer.len) {
                             continue :state nextState;
                         } else break :state;
@@ -152,7 +155,7 @@ pub const Parser = struct {
                         const nextState, const pos, const insides = try label(buffer[i..buffer.len]);
                         i += pos;
 
-                        try symbolTable.labels.put(insides, currentInstruction);
+                        try symbolTable.labels.put(insides, @as(u15, @intCast(currentInstruction)));
 
                         if (i + 1 < buffer.len) {
                             i += 1;
@@ -413,7 +416,7 @@ pub const Parser = struct {
                 return .{ FirstPassState.search, 2, .{ .value = 0 } };
             },
             '1'...'9' => |firstNum| {
-                var number: u64 = @intCast(firstNum - '0');
+                var number: u15 = @intCast(firstNum - '0');
 
                 for (2..slice.len) |i| {
                     switch (slice[i]) {
@@ -421,7 +424,7 @@ pub const Parser = struct {
                             return .{ FirstPassState.newLine, i, .{ .value = number } };
                         },
                         '0'...'9' => |num| {
-                            number = number * 10 + @as(u64, @intCast((num - '0')));
+                            number = number * 10 + @as(u15, @intCast((num - '0')));
                         },
                         '/' => {
                             return .{ FirstPassState.comment, i, .{ .value = number } };

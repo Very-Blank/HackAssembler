@@ -1,6 +1,6 @@
 const std = @import("std");
 const parser = @import("parser.zig");
-const FirstPass = @import("firstPass.zig").FirstPass;
+const SecondPass = @import("secondPass.zig").SecondPass;
 
 var debug_allocator: std.heap.DebugAllocator(.{}) = .init;
 
@@ -99,7 +99,7 @@ test "Valid, random spacing" {
     var par = try parser.Parser.init(allocator);
     defer par.deinit();
 
-    var value: FirstPass = par.firstPass(buffer) catch |err| {
+    var value: SecondPass = par.firstPass(buffer) catch |err| {
         std.debug.print("{any}\n", .{err});
         return err;
     };
@@ -116,7 +116,7 @@ test "Invalid" {
     defer par.deinit();
 
     for (buffers) |buffer| {
-        var value: FirstPass = par.firstPass(buffer) catch {
+        var value: SecondPass = par.firstPass(buffer) catch {
             continue;
         };
 

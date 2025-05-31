@@ -48,6 +48,19 @@ pub fn build(b: *std.Build) void {
     });
 
     const runUnitParsingTests = b.addRunArtifact(unitParsingTests);
-
     test_step.dependOn(&runUnitParsingTests.step);
+
+    const fullTests = b.createModule(.{
+        .root_source_file = b.path("src/fullTest.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
+
+    const unitFullTests = b.addTest(.{
+        .root_module = fullTests,
+    });
+
+    const runUnitFullTest = b.addRunArtifact(unitFullTests);
+
+    test_step.dependOn(&runUnitFullTest.step);
 }
