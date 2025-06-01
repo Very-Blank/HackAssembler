@@ -457,6 +457,7 @@ pub const Parser = struct {
     /// Takes in a slice of the buffer that is in the format (......
     /// Returns the next state, position of the ) and a slice that contains the insides of the label
     inline fn label(slice: []const u8) !struct { FirstPassState, u64, []const u8 } {
+        std.debug.assert(slice[0] == '(');
         if (slice.len < 3 or !std.ascii.isAlphabetic(slice[1])) return error.@"Unexpected ( found";
 
         for (2..slice.len) |i| {
