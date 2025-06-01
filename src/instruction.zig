@@ -1,6 +1,19 @@
+const std = @import("std");
+
 pub const A = union(enum) {
     symbol: []const u8,
     value: u15,
+
+    pub fn debugPrint(self: *const A) void {
+        switch (self.*) {
+            .symbol => |symbol| {
+                std.debug.print("A Instruction (Symbol). Symbol: {s}\n", .{symbol});
+            },
+            .value => |value| {
+                std.debug.print("A Instruction (Value). Value: {any}\n", .{value});
+            },
+        }
+    }
 };
 
 pub const Destination = enum(u3) {
@@ -69,14 +82,33 @@ pub const C = union(enum) {
             .cj => |value| return 0b111_0_000000_000_000 + (@as(u16, @intCast(@intFromEnum(value.comp))) << 6) + (@as(u16, @intCast(@intFromEnum(value.jump)))),
         }
     }
+
+    pub fn debugPrint(self: *const C) void {
+        switch (self.*) {
+            .dcj => |value| std.debug.print("C Instruction (DCJ). Dest: {any}, Comp: {any}, Jump: {any}. In binary: {b}\n", .{ value.dest, value.comp, value.jump, self.toBinary() }),
+            .dc => |value| std.debug.print("C Instruction (DC). Dest: {any}, Comp: {any}. In binary: {b}\n", .{ value.dest, value.comp, self.toBinary() }),
+            .cj => |value| std.debug.print("C Instruction (CJ). Comp: {any}, Jump: {any}. In binary: {b}\n", .{ value.comp, value.jump, self.toBinary() }),
+        }
+    }
 };
 
 pub const Instruction = struct {
     line: u64,
     type: Type,
+
+    pub fn debugPrint(self: *const Instruction) void {
+        std.debug.print("Line {any}, ", .{self.line});
+        self.type.debugPrint();
+    }
 };
 
 pub const Type = union(enum) {
     a: A,
     c: C,
+    pub fn debugPrint(self: *const Type) void {
+        switch (self.*) {
+            .a => |a| a.debugPrint(),
+            .c => |c| c.debugPrint(),
+        }
+    }
 };

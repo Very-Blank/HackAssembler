@@ -51,7 +51,7 @@ pub const Parser = struct {
         var instructions: std.ArrayList(instruction.Instruction) = std.ArrayList(instruction.Instruction).init(self.allocator);
         errdefer instructions.deinit();
 
-        var symbolTable: SymbolTable = SymbolTable.init(self.allocator);
+        var symbolTable: SymbolTable = try SymbolTable.init(self.allocator);
         errdefer symbolTable.deinit();
 
         var currentInstruction: u64 = 0;
@@ -79,7 +79,7 @@ pub const Parser = struct {
                 }
             },
             .comment => {
-                i += 1;
+                std.debug.assert(buffer[i] == '/');
                 if (i < buffer.len and buffer[i] == '/') {
                     for (i..buffer.len) |j| {
                         if (buffer[j] == '\n') {
@@ -94,6 +94,9 @@ pub const Parser = struct {
                             break :state;
                         }
                     }
+
+                    i = buffer.len - 1;
+                    break :state;
                 } else {
                     return error.@"Unexpected / found";
                 }
