@@ -37,7 +37,6 @@ fn fullTest(buffer: []const u8, expectedOutput: []const u8) !void {
         }
     }
 }
-
 test "Add" {
     const buffer: []const u8 =
         \\@2

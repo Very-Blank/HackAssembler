@@ -60,38 +60,28 @@ pub const Parser = struct {
         var i: u64 = 0;
         state: switch (FirstPassState.search) {
             .newLine => {
-                switch (buffer[i]) {
-                    '\n' => {
-                        currentLine += 1;
-
-                        if (i + 1 < buffer.len) {
-                            i += 1;
+                for (i..buffer.len) |j| {
+                    switch (buffer[j]) {
+                        '\n' => {
+                            i = j;
                             continue :state .search;
-                        }
-
-                        break :state;
-                    },
-                    '/' => {
-                        continue :state .comment;
-                    },
-                    ' ', '\t', '\r', std.ascii.control_code.vt, std.ascii.control_code.ff => {},
-                    else => return error.UnexpectedCharacter,
+                        },
+                        '/' => {
+                            i = j;
+                            continue :state .comment;
+                        },
+                        ' ', '\t', '\r', std.ascii.control_code.vt, std.ascii.control_code.ff => {},
+                        else => return error.UnexpectedCharacter,
+                    }
                 }
             },
             .comment => {
                 std.debug.assert(buffer[i] == '/');
-                if (i < buffer.len and buffer[i] == '/') {
-                    for (i..buffer.len) |j| {
+                if (i + 1 < buffer.len and buffer[i + 1] == '/') {
+                    for (i + 1..buffer.len) |j| {
                         if (buffer[j] == '\n') {
-                            currentLine += 1;
-
-                            if (j + 1 < buffer.len) {
-                                i = j + 1;
-                                continue :state .search;
-                            }
-
                             i = j;
-                            break :state;
+                            continue :state .search;
                         }
                     }
 
@@ -361,7 +351,7 @@ pub const Parser = struct {
         for (0..slice.len) |i| {
             switch (slice[i]) {
                 ' ', '\t', '\r', std.ascii.control_code.vt, std.ascii.control_code.ff => {},
-                '\n' => return error.NoStartForSlice,
+                '\n', '/' => return error.NoStartForSlice,
                 else => {
                     start = i;
                     break;
@@ -467,8 +457,6 @@ pub const Parser = struct {
     /// Takes in a slice of the buffer that is in the format (......
     /// Returns the next state, position of the ) and a slice that contains the insides of the label
     inline fn label(slice: []const u8) !struct { FirstPassState, u64, []const u8 } {
-        std.debug.assert(slice[0] == '(');
-
         if (slice.len < 3 or !std.ascii.isAlphabetic(slice[1])) return error.@"Unexpected ( found";
 
         for (2..slice.len) |i| {
