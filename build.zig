@@ -4,11 +4,23 @@ pub fn build(b: *std.Build) void {
     const target = b.standardTargetOptions(.{});
     const optimize = b.standardOptimizeOption(.{});
 
-    const exe = b.addExecutable(.{
-        .name = "HackAssembler",
+    const mainMod = b.createModule(.{
+        .root_source_file = b.path("src/hackAsm.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
+
+    const exe_mod = b.createModule(.{
         .root_source_file = b.path("src/main.zig"),
         .target = target,
         .optimize = optimize,
+    });
+
+    exe_mod.addImport("HackAsm", mainMod);
+
+    const exe = b.addExecutable(.{
+        .name = "HackAssembler",
+        .root_module = exe_mod,
     });
 
     b.installArtifact(exe);
@@ -22,45 +34,30 @@ pub fn build(b: *std.Build) void {
     const run_step = b.step("run", "Run the app");
     run_step.dependOn(&run_cmd.step);
 
-    const cInstructionTest = b.createModule(.{
-        .root_source_file = b.path("src/cInstructionTests.zig"),
-        .target = target,
-        .optimize = optimize,
-    });
-
-    const unitCInstructionTest = b.addTest(.{
-        .root_module = cInstructionTest,
-    });
-
-    const runUnitCInstructionsTest = b.addRunArtifact(unitCInstructionTest);
+    // Tests:
+    const testFiles = .{
+        "cTest",
+        "fullTest",
+        "parsingTest",
+    };
 
     const test_step = b.step("test", "Run unit tests");
-    test_step.dependOn(&runUnitCInstructionsTest.step);
 
-    const parsingTests = b.createModule(.{
-        .root_source_file = b.path("src/parsingTests.zig"),
-        .target = target,
-        .optimize = optimize,
-    });
+    inline for (testFiles) |fileName| {
+        const testModule = b.createModule(.{
+            .root_source_file = b.path("tests/" ++ fileName ++ ".zig"),
+            .target = target,
+            .optimize = optimize,
+        });
 
-    const unitParsingTests = b.addTest(.{
-        .root_module = parsingTests,
-    });
+        testModule.addImport("HackAsm", mainMod);
 
-    const runUnitParsingTests = b.addRunArtifact(unitParsingTests);
-    test_step.dependOn(&runUnitParsingTests.step);
+        const unitTest = b.addTest(.{
+            .root_module = testModule,
+        });
 
-    const fullTests = b.createModule(.{
-        .root_source_file = b.path("src/fullTest.zig"),
-        .target = target,
-        .optimize = optimize,
-    });
+        const runUnitTest = b.addRunArtifact(unitTest);
 
-    const unitFullTests = b.addTest(.{
-        .root_module = fullTests,
-    });
-
-    const runUnitFullTest = b.addRunArtifact(unitFullTests);
-
-    test_step.dependOn(&runUnitFullTest.step);
+        test_step.dependOn(&runUnitTest.step);
+    }
 }

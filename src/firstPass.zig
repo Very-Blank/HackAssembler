@@ -3,14 +3,14 @@ const instruction = @import("instruction.zig");
 const SecondPass = @import("secondPass.zig").SecondPass;
 const SymbolTable = @import("symbolTable.zig").SymbolTable;
 
-pub const Parser = struct {
+pub const FirstPass = struct {
     destMap: std.StringHashMap(instruction.Destination),
     compMap: std.StringHashMap(instruction.Computation),
     jumpMap: std.StringHashMap(instruction.Jump),
     allocator: std.mem.Allocator,
 
-    pub fn init(allocator: std.mem.Allocator) !Parser {
-        var parser: Parser = .{
+    pub fn init(allocator: std.mem.Allocator) !FirstPass {
+        var parser: FirstPass = .{
             .destMap = std.StringHashMap(instruction.Destination).init(allocator),
             .compMap = std.StringHashMap(instruction.Computation).init(allocator),
             .jumpMap = std.StringHashMap(instruction.Jump).init(allocator),
@@ -34,7 +34,7 @@ pub const Parser = struct {
         return parser;
     }
 
-    pub fn deinit(self: *Parser) void {
+    pub fn deinit(self: *FirstPass) void {
         self.destMap.deinit();
         self.compMap.deinit();
         self.jumpMap.deinit();
@@ -47,27 +47,25 @@ pub const Parser = struct {
     };
 
     /// FirstPass could contain pointers to the given buffer.
-    pub fn firstPass(self: *const Parser, buffer: []const u8) !SecondPass {
+    pub fn firstPass(self: *const FirstPass, buffer: []const u8) !SecondPass {
         var instructions: std.ArrayList(instruction.Instruction) = std.ArrayList(instruction.Instruction).init(self.allocator);
         errdefer instructions.deinit();
 
         var symbolTable: SymbolTable = try SymbolTable.init(self.allocator);
         errdefer symbolTable.deinit();
 
-        var currentInstruction: u64 = 0;
+        var currentInstruction: u15 = 0;
         var currentLine: u64 = 1;
 
         var i: u64 = 0;
         state: switch (FirstPassState.search) {
             .newLine => {
-                for (i..buffer.len) |j| {
-                    switch (buffer[j]) {
+                while (i < buffer.len) : (i += 1) {
+                    switch (buffer[i]) {
                         '\n' => {
-                            i = j;
                             continue :state .search;
                         },
                         '/' => {
-                            i = j;
                             continue :state .comment;
                         },
                         ' ', '\t', '\r', std.ascii.control_code.vt, std.ascii.control_code.ff => {},
@@ -78,86 +76,70 @@ pub const Parser = struct {
             .comment => {
                 std.debug.assert(buffer[i] == '/');
                 if (i + 1 < buffer.len and buffer[i + 1] == '/') {
-                    for (i + 1..buffer.len) |j| {
-                        if (buffer[j] == '\n') {
-                            i = j;
+                    i += 1;
+                    while (i < buffer.len) : (i += 1) {
+                        if (buffer[i] == '\n') {
                             continue :state .search;
                         }
                     }
-
-                    i = buffer.len - 1;
-                    break :state;
                 } else {
                     return error.@"Unexpected / found";
                 }
             },
             .search => {
-                switch (buffer[i]) {
-                    '/' => {
-                        continue :state .comment;
-                    },
-                    ' ', '\t', '\r', std.ascii.control_code.vt, std.ascii.control_code.ff => {
-                        if (i + 1 < buffer.len) {
-                            i += 1;
-                            continue :state .search;
-                        }
+                while (i < buffer.len) : (i += 1) {
+                    switch (buffer[i]) {
+                        '/' => {
+                            continue :state .comment;
+                        },
+                        ' ', '\t', '\r', std.ascii.control_code.vt, std.ascii.control_code.ff => {},
+                        '\n' => {
+                            currentLine += 1;
+                        },
+                        '@' => {
+                            const nextState, const pos, const a = try aInstruction(buffer[i..buffer.len]);
+                            i += pos;
 
-                        break :state;
-                    },
-                    '\n' => {
-                        currentLine += 1;
+                            try instructions.append(.{
+                                .line = currentLine,
+                                .type = .{ .a = a },
+                            });
 
-                        if (i + 1 < buffer.len) {
-                            i += 1;
-                            continue :state .search;
-                        }
+                            currentInstruction += 1;
 
-                        break :state;
-                    },
-                    '@' => {
-                        const nextState, const pos, const a = try aInstruction(buffer[i..buffer.len]);
-                        i += pos;
+                            if (i < buffer.len) {
+                                continue :state nextState;
+                            } else break :state;
+                        },
+                        '0'...'9', 'A'...'Z', 'a'...'z', '-', '!' => {
+                            const nextState, const pos, const c = try self.cInstruction(buffer[i..buffer.len]);
+                            i += pos;
 
-                        try instructions.append(.{
-                            .line = currentLine,
-                            .type = .{ .a = a },
-                        });
+                            try instructions.append(.{
+                                .line = currentLine,
+                                .type = .{ .c = c },
+                            });
 
-                        currentInstruction += 1;
+                            currentInstruction += 1;
 
-                        if (i < buffer.len) {
-                            continue :state nextState;
-                        } else break :state;
-                    },
-                    '0'...'9', 'A'...'Z', 'a'...'z', '-', '!' => {
-                        const nextState, const pos, const c = try self.cInstruction(buffer[i..buffer.len]);
-                        i += pos;
+                            if (i < buffer.len) {
+                                continue :state nextState;
+                            } else break :state;
+                        },
+                        '(' => {
+                            const pos, const insides = try label(buffer[i..buffer.len]);
+                            i += pos;
 
-                        try instructions.append(.{
-                            .line = currentLine,
-                            .type = .{ .c = c },
-                        });
+                            try symbolTable.labels.put(insides, currentInstruction);
 
-                        currentInstruction += 1;
-
-                        if (i < buffer.len) {
-                            continue :state nextState;
-                        } else break :state;
-                    },
-                    '(' => {
-                        const nextState, const pos, const insides = try label(buffer[i..buffer.len]);
-                        i += pos;
-
-                        try symbolTable.labels.put(insides, @as(u15, @intCast(currentInstruction)));
-
-                        if (i + 1 < buffer.len) {
-                            i += 1;
-                            continue :state nextState;
-                        } else break :state;
-                    },
-                    else => {
-                        return error.UnexpectedCharacter;
-                    },
+                            if (i < buffer.len) {
+                                continue :state .newLine;
+                            } else break :state;
+                        },
+                        else => {
+                            return error.UnexpectedCharacter;
+                        },
+                    }
                 }
             },
         }
@@ -170,7 +152,7 @@ pub const Parser = struct {
     }
 
     /// Position might be end of the slice!
-    inline fn cInstruction(self: *const Parser, slice: []const u8) !struct { FirstPassState, u64, instruction.C } {
+    inline fn cInstruction(self: *const FirstPass, slice: []const u8) !struct { FirstPassState, u64, instruction.C } {
         std.debug.assert(isCInstructionStart(slice[0]));
 
         var dest: ?[]const u8 = null;
@@ -456,7 +438,7 @@ pub const Parser = struct {
 
     /// Takes in a slice of the buffer that is in the format (......
     /// Returns the next state, position of the ) and a slice that contains the insides of the label
-    inline fn label(slice: []const u8) !struct { FirstPassState, u64, []const u8 } {
+    inline fn label(slice: []const u8) !struct { u64, []const u8 } {
         std.debug.assert(slice[0] == '(');
         if (slice.len < 3 or !std.ascii.isAlphabetic(slice[1])) return error.@"Unexpected ( found";
 
@@ -464,7 +446,7 @@ pub const Parser = struct {
             switch (slice[i]) {
                 '0'...'9', 'A'...'Z', 'a'...'z', '_' => {},
                 ')' => {
-                    return .{ FirstPassState.newLine, i, slice[1..i] };
+                    return .{ i + 1, slice[1..i] };
                 },
                 else => return error.UnexpectedCharacter,
             }

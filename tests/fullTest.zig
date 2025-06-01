@@ -1,13 +1,13 @@
 const std = @import("std");
-const Parser = @import("parser.zig").Parser;
-const SecondPass = @import("secondPass.zig").SecondPass;
+const FirstPass = @import("HackAsm").FirstPass;
+const SecondPass = @import("HackAsm").SecondPass;
 
 var debug_allocator: std.heap.DebugAllocator(.{}) = .init;
 
 fn fullTest(buffer: []const u8, expectedOutput: []const u8) !void {
     const allocator: std.mem.Allocator = debug_allocator.allocator();
 
-    var parser = try Parser.init(allocator);
+    var parser = try FirstPass.init(allocator);
     defer parser.deinit();
 
     var secondPass: SecondPass = parser.firstPass(buffer) catch |err| {

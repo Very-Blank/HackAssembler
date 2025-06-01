@@ -1,6 +1,6 @@
 const std = @import("std");
-const parser = @import("parser.zig");
-const SecondPass = @import("secondPass.zig").SecondPass;
+const FirstPass = @import("HackAsm").FirstPass;
+const SecondPass = @import("HackAsm").SecondPass;
 
 var debug_allocator: std.heap.DebugAllocator(.{}) = .init;
 
@@ -96,15 +96,15 @@ test "Valid, random spacing" {
         \\AMD  =  M-1;JGE
     ;
 
-    var par = try parser.Parser.init(allocator);
-    defer par.deinit();
+    var firstPass = try FirstPass.init(allocator);
+    defer firstPass.deinit();
 
-    var value: SecondPass = par.firstPass(buffer) catch |err| {
+    var secondPass: SecondPass = firstPass.firstPass(buffer) catch |err| {
         std.debug.print("{any}\n", .{err});
         return err;
     };
 
-    value.deinit();
+    secondPass.deinit();
 }
 
 test "Invalid" {
@@ -112,16 +112,15 @@ test "Invalid" {
 
     const buffers: [52][]const u8 = .{ "M=Dx", "D=0?", "A-DJMP", "D;JGT^", "D|A;JEQ#", "ADM=M-1;JGE@", "MD=M-1", "AMD=!M", "MD", "0JMP", "D+MJGE", "D=MJNE", "AM=D+1JGE", "AD=0JMP", "MD=D-1JGT", "M=1JLT", "A=D&AJEQ", "AMD=!MJLE", "D=D|MJMP", "ADM=M-1JGE", "B=0", "X=D", "A=2", "D=!", "M-1;JUMP", "0;J", "D|A;JGEQ", "D;JGT!", "M=D;123", "AMD=!M;J", "ADM=M-1;JMPX", "=1;JMP", "D=;", "M-1;", "0;", "=;JMP", "D=1;", "A=;", "D+A", "1", "JMP", "A=1;;", "=D", "=1;JMP", "D=;", "D=;JMP", "0;", "D|A;", "=M;JMP", "=;JMP", "D=1;", "A=;" };
 
-    var par = try parser.Parser.init(allocator);
-    defer par.deinit();
+    var firstPass = try FirstPass.init(allocator);
+    defer firstPass.deinit();
 
     for (buffers) |buffer| {
-        var value: SecondPass = par.firstPass(buffer) catch {
+        var secondPass: SecondPass = firstPass.firstPass(buffer) catch {
             continue;
         };
 
-        value.deinit();
-
+        secondPass.deinit();
         return error.TestFailed;
     }
 }

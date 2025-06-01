@@ -1,6 +1,6 @@
 const std = @import("std");
-const parser = @import("parser.zig");
-const SecondPass = @import("secondPass.zig").SecondPass;
+const FirstPass = @import("HackAsm").FirstPass;
+const SecondPass = @import("HackAsm").SecondPass;
 
 var debug_allocator: std.heap.DebugAllocator(.{}) = .init;
 
@@ -33,13 +33,13 @@ test "TestProgram" {
         \\0;JMP // infinite loop
     ;
 
-    var par = try parser.Parser.init(allocator);
-    defer par.deinit();
+    var firstPass = try FirstPass.init(allocator);
+    defer firstPass.deinit();
 
-    var value: SecondPass = par.firstPass(buffer) catch |err| {
+    var secondPass: SecondPass = firstPass.firstPass(buffer) catch |err| {
         std.debug.print("{any}\n", .{err});
         return err;
     };
 
-    value.deinit();
+    secondPass.deinit();
 }

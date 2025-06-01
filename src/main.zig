@@ -1,6 +1,7 @@
 const std = @import("std");
 const builtin = @import("builtin");
-const parser = @import("parser.zig");
+const SecondPass = @import("HackAsm").SecondPass;
+const SymbolTable = @import("HackAsm").SymbolTable;
 
 var debug_allocator: std.heap.DebugAllocator(.{}) = .init;
 
@@ -22,8 +23,8 @@ pub fn main() !void {
     defer allocator.free(buffer);
     _ = try file.readAll(buffer);
 
-    var par = try parser.Parser.init(allocator);
-    defer par.deinit();
-
-    try par.firstPass(buffer);
+    // var par = try parser.Parser.init(allocator);
+    // defer par.deinit();
+    //
+    // try par.firstPass(buffer);
 }
