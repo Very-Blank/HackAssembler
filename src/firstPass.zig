@@ -3,6 +3,8 @@ const instruction = @import("instruction.zig");
 const SecondPass = @import("secondPass.zig").SecondPass;
 const SymbolTable = @import("symbolTable.zig").SymbolTable;
 
+// const logger = @import("logger.zig").Logger.init();
+
 pub const FirstPass = struct {
     destMap: std.StringHashMap(instruction.Destination),
     compMap: std.StringHashMap(instruction.Computation),
