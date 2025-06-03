@@ -5,6 +5,110 @@ const SymbolTable = @import("symbolTable.zig").SymbolTable;
 
 // const logger = @import("logger.zig").Logger.init();
 
+const Parser = struct {
+    instructions: std.ArrayList(instruction.Instruction),
+    symbolTable: SymbolTable,
+
+    i: u64,
+    buffer: []const u8,
+    currentInstruction: u15,
+    currentLine: u64,
+
+    allocator: std.mem.Allocator,
+
+    pub fn init(allocator: std.mem.Allocator, buffer: []const u8) Parser {
+        var instructions: std.ArrayList(instruction.Instruction) = std.ArrayList(instruction.Instruction).init(allocator);
+        errdefer instructions.deinit();
+
+        var symbolTable: SymbolTable = try SymbolTable.init(allocator);
+        errdefer symbolTable.deinit();
+
+        return .{
+            .instructions = instructions,
+            .symbolTable = symbolTable,
+
+            .i = 0,
+            .buffer = buffer,
+            .currentInstruction = 0,
+            .currentLine = 1,
+        };
+    }
+
+    pub inline fn addInstruction(comptime t: type, parser: *Parser, value: t) !void {
+        switch (t) {
+            instruction.A => {
+                try parser.instructions.append(.{
+                    .line = parser.currentLine,
+                    .type = .{ .a = value },
+                });
+
+                parser.currentInstruction += 1;
+            },
+            instruction.C => {
+                try parser.instructions.append(.{
+                    .line = parser.currentLine,
+                    .type = .{ .c = value },
+                });
+
+                parser.currentInstruction += 1;
+            },
+            else => @compileError("Type " ++ @typeName(t) ++ " is not supported"),
+        }
+    }
+
+    pub inline fn next(self: *Parser) bool {
+        if (self.i + 1 < self.buffer.len) {
+            self.i += 1;
+            return true;
+        }
+
+        return false;
+    }
+
+    pub inline fn comment(self: *Parser) !void {
+        std.debug.assert(self.buffer[self.i] == '/');
+        if (!self.next() or self.get() != '/') return error.@"Unexpected / found";
+
+        if (self.next()) {
+            while (self.i < self.buffer.len) : (self.i += 1) {
+                switch (self.get()) {
+                    '\n' => {
+                        self.currentLine += 1;
+                        return;
+                    },
+                    else => {},
+                }
+            }
+        }
+    }
+
+    pub inline fn newLine(self: *Parser) !void {
+        while (self.i < self.buffer.len) : (self.i += 1) {
+            switch (self.get()) {
+                '\n' => {
+                    self.currentLine += 1;
+                    return;
+                },
+                '/' => {
+                    try self.comment();
+                    return;
+                },
+                ' ', '\t', '\r', std.ascii.control_code.vt, std.ascii.control_code.ff => {},
+                else => return error.UnexpectedCharacter,
+            }
+        }
+    }
+
+    pub inline fn get(self: *Parser) u8 {
+        return self.buffer[self.i];
+    }
+
+    pub fn errDeinit(self: *Parser) void {
+        self.instructions.deinit();
+        self.symbolTable.deinit();
+    }
+};
+
 pub const FirstPass = struct {
     destMap: std.StringHashMap(instruction.Destination),
     compMap: std.StringHashMap(instruction.Computation),
@@ -12,28 +116,28 @@ pub const FirstPass = struct {
     allocator: std.mem.Allocator,
 
     pub fn init(allocator: std.mem.Allocator) !FirstPass {
-        var parser: FirstPass = .{
+        var first: FirstPass = .{
             .destMap = std.StringHashMap(instruction.Destination).init(allocator),
             .compMap = std.StringHashMap(instruction.Computation).init(allocator),
             .jumpMap = std.StringHashMap(instruction.Jump).init(allocator),
             .allocator = allocator,
         };
 
-        errdefer parser.deinit();
+        errdefer first.deinit();
 
         inline for (@typeInfo(instruction.Destination).@"enum".fields) |dest| {
-            try parser.destMap.put(dest.name, @field(instruction.Destination, dest.name));
+            try first.destMap.put(dest.name, @field(instruction.Destination, dest.name));
         }
 
         inline for (@typeInfo(instruction.Computation).@"enum".fields) |comp| {
-            try parser.compMap.put(comp.name, @field(instruction.Computation, comp.name));
+            try first.compMap.put(comp.name, @field(instruction.Computation, comp.name));
         }
 
         inline for (@typeInfo(instruction.Jump).@"enum".fields) |jump| {
-            try parser.jumpMap.put(jump.name, @field(instruction.Jump, jump.name));
+            try first.jumpMap.put(jump.name, @field(instruction.Jump, jump.name));
         }
 
-        return parser;
+        return first;
     }
 
     pub fn deinit(self: *FirstPass) void {
@@ -59,7 +163,11 @@ pub const FirstPass = struct {
         var currentInstruction: u15 = 0;
         var currentLine: u64 = 1;
 
+        var parser: Parser = Parser.init(self.allocator, buffer);
+
         var i: u64 = 0;
+        while (i < buffer.len) : (i += 1) {}
+
         state: switch (FirstPassState.search) {
             .newLine => {
                 while (i < buffer.len) : (i += 1) {
@@ -369,88 +477,124 @@ pub const FirstPass = struct {
 
     /// Takes in a slice of the buffer that is in the format @......
     /// Returns the next state, position of the ending character (whitespace, buffer end, /) and the instruction.
-    inline fn aInstruction(slice: []const u8) !struct { FirstPassState, u64, instruction.A } {
-        std.debug.assert(slice[0] == '@');
-        if (slice.len < 2) return error.@"Unexpected @ found";
+    inline fn aInstruction(parser: *Parser) !struct { FirstPassState, u64, instruction.A } {
+        std.debug.assert(parser.buffer[parser.i] == '@');
 
-        switch (slice[1]) {
-            '0' => {
-                if (3 < slice.len) {
-                    switch (slice[2]) {
-                        ' ', '\t', '\r', std.ascii.control_code.vt, std.ascii.control_code.ff => {
-                            return .{ FirstPassState.newLine, 2, .{ .value = 0 } };
-                        },
-                        '/' => {
-                            return .{ FirstPassState.comment, 2, .{ .value = 0 } };
-                        },
-                        '\n' => {
-                            return .{ FirstPassState.search, 2, .{ .value = 0 } };
-                        },
-                        else => return error.UnexpectedCharacter,
+        if (parser.next()) {
+            switch (parser.get()) {
+                '0' => {
+                    if (parser.next()) {
+                        switch (parser.get()) {
+                            ' ', '\t', '\r', std.ascii.control_code.vt, std.ascii.control_code.ff => {
+                                parser.addInstruction(instruction.A, .{ .value = 0 });
+                                try parser.newLine();
+                                return;
+                            },
+                            '/' => {
+                                parser.addInstruction(instruction.A, .{ .value = 0 });
+                                try parser.comment();
+                                return;
+                            },
+                            '\n' => {
+                                parser.addInstruction(instruction.A, .{ .value = 0 });
+                                parser.currentLine += 1;
+                                return;
+                            },
+                            else => return error.UnexpectedCharacter,
+                        }
                     }
-                }
 
-                return .{ FirstPassState.search, 2, .{ .value = 0 } };
-            },
-            '1'...'9' => |firstNum| {
-                var number: u15 = @intCast(firstNum - '0');
+                    parser.addInstruction(instruction.A, .{ .value = 0 });
+                    return;
+                },
+                '1'...'9' => |firstNum| {
+                    var number: u15 = @intCast(firstNum - '0');
 
-                for (2..slice.len) |i| {
-                    switch (slice[i]) {
-                        ' ', '\t', '\r', std.ascii.control_code.vt, std.ascii.control_code.ff => {
-                            return .{ FirstPassState.newLine, i, .{ .value = number } };
-                        },
-                        '0'...'9' => |num| {
-                            number = number * 10 + @as(u15, @intCast((num - '0')));
-                        },
-                        '/' => {
-                            return .{ FirstPassState.comment, i, .{ .value = number } };
-                        },
-                        '\n' => {
-                            return .{ FirstPassState.search, i, .{ .value = number } };
-                        },
-                        else => return error.UnexpectedCharacter,
+                    if (parser.next()) {
+                        while (parser.i < parser.buffer.len) : (parser.i += 1) {
+                            switch (parser.get()) {
+                                ' ', '\t', '\r', std.ascii.control_code.vt, std.ascii.control_code.ff => {
+                                    parser.addInstruction(instruction.A, .{ .value = number });
+                                    try parser.newLine();
+                                    return;
+                                },
+                                '0'...'9' => |num| {
+                                    number = number * 10 + @as(u15, @intCast((num - '0')));
+                                },
+                                '/' => {
+                                    parser.addInstruction(instruction.A, .{ .value = number });
+                                    try parser.comment();
+                                    return;
+                                },
+                                '\n' => {
+                                    parser.addInstruction(instruction.A, .{ .value = number });
+                                    return;
+                                },
+                                else => return error.UnexpectedCharacter,
+                            }
+                        }
                     }
-                }
 
-                return .{ FirstPassState.newLine, slice.len, .{ .value = number } };
-            },
-            'A'...'Z', 'a'...'z', '_' => {
-                for (2..slice.len) |i| {
-                    switch (slice[i]) {
-                        ' ', '\t', '\r', std.ascii.control_code.vt, std.ascii.control_code.ff => {
-                            return .{ FirstPassState.newLine, i, .{ .symbol = slice[1..i] } };
-                        },
-                        '/' => {
-                            return .{ FirstPassState.comment, i, .{ .symbol = slice[1..i] } };
-                        },
-                        '\n' => {
-                            return .{ FirstPassState.search, i, .{ .symbol = slice[1..i] } };
-                        },
-                        'A'...'Z', 'a'...'z', '0'...'9', '_' => {},
-                        else => return error.UnexpectedCharacter,
+                    parser.addInstruction(instruction.A, .{ .value = number });
+                    return;
+                },
+                'A'...'Z', 'a'...'z', '_' => {
+                    const start = parser.i;
+                    if (parser.next()) {
+                        while (parser.i < parser.buffer.len) : (parser.i += 1) {
+                            switch (parser.get()) {
+                                ' ', '\t', '\r', std.ascii.control_code.vt, std.ascii.control_code.ff => {
+                                    parser.addInstruction(instruction.A, .{ .symbol = parser.buffer[start..parser.i] });
+                                    try parser.newLine();
+                                    return;
+                                },
+                                '/' => {
+                                    parser.addInstruction(instruction.A, .{ .symbol = parser.buffer[start..parser.i] });
+                                    try parser.comment();
+                                    return;
+                                },
+                                '\n' => {
+                                    parser.addInstruction(instruction.A, .{ .symbol = parser.buffer[start..parser.i] });
+                                    parser.currentLine += 1;
+                                    return;
+                                },
+                                'A'...'Z', 'a'...'z', '0'...'9', '_' => {},
+                                else => return error.UnexpectedCharacter,
+                            }
+                        }
                     }
-                }
 
-                return .{ FirstPassState.newLine, slice.len, .{ .symbol = slice[1..slice.len] } };
-            },
-            else => return error.UnexpectedCharacter,
+                    parser.addInstruction(instruction.A, .{ .symbol = parser.buffer[start..parser.i] });
+                    return;
+                },
+                else => return error.UnexpectedCharacter,
+            }
         }
+
+        return error.@"Unexpected @ found";
     }
 
     /// Takes in a slice of the buffer that is in the format (......
-    /// Returns the next state, position of the ) and a slice that contains the insides of the label
-    inline fn label(slice: []const u8) !struct { u64, []const u8 } {
-        std.debug.assert(slice[0] == '(');
-        if (slice.len < 3 or !std.ascii.isAlphabetic(slice[1])) return error.@"Unexpected ( found";
+    inline fn label(parser: *Parser) !void {
+        std.debug.assert(parser.get() == '(');
+        if (!parser.next() or !std.ascii.isAlphabetic(parser.get())) return error.@"Unexpected ( found";
 
-        for (2..slice.len) |i| {
-            switch (slice[i]) {
-                '0'...'9', 'A'...'Z', 'a'...'z', '_' => {},
-                ')' => {
-                    return .{ i + 1, slice[1..i] };
-                },
-                else => return error.UnexpectedCharacter,
+        const start = parser.i;
+
+        if (parser.next()) {
+            while (parser.i < parser.buffer.len) : (parser.i += 1) {
+                switch (parser.get()) {
+                    '0'...'9', 'A'...'Z', 'a'...'z', '_' => {},
+                    ')' => {
+                        try parser.symbolTable.labels.put(parser.buffer[start..parser.i], parser.currentInstruction);
+                        if (parser.next()) {
+                            try parser.newLine();
+                        }
+
+                        return;
+                    },
+                    else => return error.UnexpectedCharacter,
+                }
             }
         }
 
