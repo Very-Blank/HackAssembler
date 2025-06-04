@@ -41,7 +41,7 @@ pub const FirstPass = struct {
         self.jumpMap.deinit();
     }
 
-    /// FirstPass could contain pointers to the given buffer.
+    /// SecondPass could contain pointers to the given buffer.
     pub fn firstPass(self: *const FirstPass, buffer: []const u8) !SecondPass {
         var parser: Parser = try Parser.init(self.allocator, buffer);
         errdefer parser.errDeinit();
