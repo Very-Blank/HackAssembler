@@ -39,6 +39,7 @@ pub fn build(b: *std.Build) void {
         "cTest",
         "fullTest",
         "parsingTest",
+        "perfTest",
     };
 
     const test_step = b.step("test", "Run unit tests");
