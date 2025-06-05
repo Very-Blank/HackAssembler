@@ -430,7 +430,7 @@ pub const Parser = struct {
 
     pub inline fn comment(self: *Parser) !void {
         std.debug.assert(self.buffer[self.i] == '/');
-        if (!self.next() or self.get() != '/') return error.@"Unexpected / found";
+        if (!self.next() or self.get() != '/') return error.@"Expected a comment but only found /";
 
         if (self.next()) {
             while (self.i < self.buffer.len) : (self.i += 1) {
@@ -457,7 +457,7 @@ pub const Parser = struct {
                     return;
                 },
                 ' ', '\t', '\r', std.ascii.control_code.vt, std.ascii.control_code.ff => {},
-                else => return error.UnexpectedCharacter,
+                else => return error.@"Was expecting a new line, but found unexpected character",
             }
         }
     }

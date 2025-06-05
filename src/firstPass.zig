@@ -3,6 +3,7 @@ const instruction = @import("instruction.zig");
 const SecondPass = @import("secondPass.zig").SecondPass;
 const SymbolTable = @import("symbolTable.zig").SymbolTable;
 const Parser = @import("parser.zig").Parser;
+const Logger = @import("logger.zig").Logger;
 
 pub const FirstPass = struct {
     destMap: std.StringHashMap(instruction.Destination),
@@ -42,27 +43,76 @@ pub const FirstPass = struct {
     }
 
     /// SecondPass could contain pointers to the given buffer.
-    pub fn firstPass(self: *const FirstPass, buffer: []const u8) !SecondPass {
+    pub fn firstPass(self: *const FirstPass, buffer: []const u8, logger: *const Logger) !SecondPass {
         var parser: Parser = try Parser.init(self.allocator, buffer);
         errdefer parser.errDeinit();
 
         while (parser.i < parser.buffer.len) : (parser.i += 1) {
             switch (parser.get()) {
                 '/' => {
-                    try parser.comment();
+                    parser.comment() catch |err| {
+                        switch (err) {
+                            error.@"Expected a comment but only found /" => {
+                                try logger.printError("{s}, on line {any}\n", .{ @errorName(err), parser.currentLine });
+                                try logger.highlightError(parser.buffer, parser.currentLineStart, parser.i);
+                            },
+                        }
+
+                        return err;
+                    };
+                    // logger.printError("{s}");
                 },
                 ' ', '\t', '\r', std.ascii.control_code.vt, std.ascii.control_code.ff => {},
                 '\n' => {
                     parser.changeCurrentLine();
                 },
                 '@' => {
-                    try parser.aInstruction();
+                    parser.aInstruction() catch |err| {
+                        switch (err) {
+                            error.UnexpectedCharacter,
+                            error.@"Was expecting a new line, but found unexpected character",
+                            error.@"Expected a comment but only found /",
+                            error.@"Unexpected @ found",
+                            => {
+                                try logger.printError("{s}, on line {any}:\n", .{ @errorName(err), parser.currentLine });
+                                try logger.highlightError(parser.buffer, parser.currentLineStart, parser.i);
+                            },
+                            else => {},
+                        }
+
+                        return err;
+                    };
                 },
                 '0'...'9', 'A'...'Z', 'a'...'z', '-', '!' => {
-                    try parser.cInstruction(self);
+                    parser.cInstruction(self) catch |err| {
+                        switch (err) {
+                            error.UnexpectedCharacter,
+                            error.@"Expected a comment but only found /",
+                            => {
+                                try logger.printError("{s}, on line {any}:\n", .{ @errorName(err), parser.currentLine });
+                                try logger.highlightError(parser.buffer, parser.currentLineStart, parser.i);
+                            },
+                            else => {},
+                        }
+
+                        return err;
+                    };
                 },
                 '(' => {
-                    try parser.label();
+                    parser.label() catch |err| {
+                        switch (err) {
+                            error.UnexpectedCharacter,
+                            error.@"Unexpected ( found",
+                            error.@"Was expecting a new line, but found unexpected character",
+                            => {
+                                try logger.printError("{s}, on line {any}:\n", .{ @errorName(err), parser.currentLine });
+                                try logger.highlightError(parser.buffer, parser.currentLineStart, parser.i);
+                            },
+                            else => {},
+                        }
+
+                        return err;
+                    };
                 },
                 else => {
                     return error.UnexpectedCharacter;
