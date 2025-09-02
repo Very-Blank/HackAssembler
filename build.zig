@@ -35,30 +35,21 @@ pub fn build(b: *std.Build) void {
     run_step.dependOn(&run_cmd.step);
 
     // Tests:
-    const testFiles = .{
-        "cTest",
-        "fullTest",
-        "parsingTest",
-        "perfTest",
-    };
-
     const test_step = b.step("test", "Run unit tests");
 
-    inline for (testFiles) |fileName| {
-        const testModule = b.createModule(.{
-            .root_source_file = b.path("tests/" ++ fileName ++ ".zig"),
-            .target = target,
-            .optimize = optimize,
-        });
+    const testModule = b.createModule(.{
+        .root_source_file = b.path("src/test.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
 
-        testModule.addImport("HackAsm", mainMod);
+    testModule.addImport("HackAsm", mainMod);
 
-        const unitTest = b.addTest(.{
-            .root_module = testModule,
-        });
+    const unitTest = b.addTest(.{
+        .root_module = testModule,
+    });
 
-        const runUnitTest = b.addRunArtifact(unitTest);
+    const runUnitTest = b.addRunArtifact(unitTest);
 
-        test_step.dependOn(&runUnitTest.step);
-    }
+    test_step.dependOn(&runUnitTest.step);
 }
