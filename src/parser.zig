@@ -149,7 +149,7 @@ pub const Parser = struct {
                                     self.changeCurrentLine();
                                     return;
                                 },
-                                'A'...'Z', 'a'...'z', '0'...'9', '_' => {},
+                                'A'...'Z', 'a'...'z', '0'...'9', '_', '.', '$' => {},
                                 else => return error.UnexpectedCharacter,
                             }
                         }
@@ -387,7 +387,7 @@ pub const Parser = struct {
         if (self.next()) {
             while (self.i < self.buffer.len) : (self.i += 1) {
                 switch (self.get()) {
-                    '0'...'9', 'A'...'Z', 'a'...'z', '_' => {},
+                    '0'...'9', 'A'...'Z', 'a'...'z', '_', '.', '$' => {},
                     ')' => {
                         try self.symbolTable.labels.put(self.buffer[start..self.i], self.currentInstruction);
                         if (self.next()) {
