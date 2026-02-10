@@ -1,4 +1,4 @@
-# Hack assembler.
+# Hack assembler
 
 Overly complicated hack assembler as it supports any spacing:
 
@@ -33,3 +33,21 @@ Most important are:
 - [firstPass.zig](firstPass.zig)
 - [secondPass.zig](secondPass.zig)
 - [instruction.zig](instruction.zig)
+
+## Building
+
+For building this project you will need **zig 0.14.0**. With it installed you
+can just run:
+
+```cmd
+zig build
+```
+
+To run the included tests:
+
+```cmd
+zig build test
+```
+
+For convenience I have included a flake.nix for those that can use nix dev
+shells.
