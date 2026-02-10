@@ -9,10 +9,10 @@ A  =D&A;  JEQ
 MD  =  D-1; JGT
 ```
 
-And it also has a built logger that sometimes gives you debug info about your
+And it also has a built in logger that sometimes gives you debug info about your
 mistakes; Sometimes as I was too lazy to add it in all cases.
 
-```
+```cmd
 error: UnexpectedCharacter, on line 2:
 D / =D|M;JMP ...
   ^
